@@ -1,4 +1,4 @@
-namespace ScreenTimeGuard
+﻿namespace ScreenTimeGuard
 {
     /// <summary>
     /// Sumber tunggal nomor versi. build.ps1 membaca nilai di sini untuk
@@ -7,7 +7,7 @@ namespace ScreenTimeGuard
     /// </summary>
     public static class AppInfo
     {
-        public const string Version = "1.0.1";
+        public const string Version = "1.0.3";
 
         public const string Name = "Screen Time Guard";
 
@@ -19,3 +19,5 @@ namespace ScreenTimeGuard
         public const string TaskTray = "ScreenTimeGuard Tray";
     }
 }
+
+

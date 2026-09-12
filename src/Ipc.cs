@@ -60,6 +60,7 @@ namespace ScreenTimeGuard
         readonly RequestHandler _handler;
         Thread _thread;
         volatile bool _stop;
+        int _acceptFailures;
 
         public IpcServer(RequestHandler handler)
         {
@@ -79,11 +80,25 @@ namespace ScreenTimeGuard
         static PipeSecurity BuildSecurity()
         {
             PipeSecurity ps = new PipeSecurity();
+
+            // Pemilik proses harus punya CreateNewInstance, kalau tidak instance pipa
+            // KEDUA dan seterusnya gagal dibuat ("Access to the path is denied") begitu
+            // ada satu koneksi yang masih dilayani.
+            try
+            {
+                using (WindowsIdentity me = WindowsIdentity.GetCurrent())
+                    ps.AddAccessRule(new PipeAccessRule(
+                        me.User, PipeAccessRights.FullControl, AccessControlType.Allow));
+            }
+            catch { }
+
             // Semua pengguna interaktif boleh mengirim perintah; otorisasi sebenarnya
-            // dilakukan lewat password di dalam pesan.
+            // dilakukan lewat password di dalam pesan. Sengaja TIDAK diberi
+            // CreateNewInstance supaya anak tidak bisa memalsukan server pipa ini.
             ps.AddAccessRule(new PipeAccessRule(
                 new SecurityIdentifier(WellKnownSidType.WorldSid, null),
-                PipeAccessRights.ReadWrite, AccessControlType.Allow));
+                PipeAccessRights.ReadWrite | PipeAccessRights.Synchronize,
+                AccessControlType.Allow));
             ps.AddAccessRule(new PipeAccessRule(
                 new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
                 PipeAccessRights.FullControl, AccessControlType.Allow));
@@ -104,6 +119,7 @@ namespace ScreenTimeGuard
                         Paths.PipeName, PipeDirection.InOut, MaxInstances, PipeTransmissionMode.Byte,
                         PipeOptions.None, 8192, 8192, BuildSecurity());
                     server.WaitForConnection();
+                    _acceptFailures = 0;
 
                     // Dilayani di thread lain supaya perintah yang lama (mengunduh
                     // pembaruan) tidak memblokir perintah lain yang masuk.
@@ -113,8 +129,11 @@ namespace ScreenTimeGuard
                 }
                 catch (Exception ex)
                 {
-                    if (!_stop) Log.Write("IPC server error: " + ex.Message);
-                    Thread.Sleep(500);
+                    // Dibatasi supaya kegagalan beruntun tidak membanjiri log.txt.
+                    _acceptFailures++;
+                    if (!_stop && (_acceptFailures == 1 || _acceptFailures % 60 == 0))
+                        Log.Write("IPC server error (kegagalan ke-" + _acceptFailures + "): " + ex.Message);
+                    Thread.Sleep(_acceptFailures > 5 ? 5000 : 500);
                 }
                 finally
                 {

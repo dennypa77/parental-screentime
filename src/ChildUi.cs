@@ -157,6 +157,9 @@ namespace ScreenTimeGuard
         readonly StatusPanel _list = new StatusPanel();
         readonly Timer _timer = new Timer();
 
+        const int StaleGraceSeconds = 90;
+        DateTime _staleSince = DateTime.MinValue;
+
         public ChildForm()
         {
             Text = "Sisa Waktu Hari Ini";
@@ -216,11 +219,24 @@ namespace ScreenTimeGuard
 
             if (!fresh)
             {
-                _sub.Text = "Agent pengawas sedang tidak berjalan. Hubungi orang tua kalau ini terus muncul.";
-                _sub.ForeColor = Theme.Warn;
+                // Agent sempat mati beberapa puluh detik saat memasang pembaruan atau
+                // saat komputer baru menyala; jangan langsung menakut-nakuti anak.
+                if (_staleSince == DateTime.MinValue) _staleSince = DateTime.UtcNow;
+                if ((DateTime.UtcNow - _staleSince).TotalSeconds < StaleGraceSeconds)
+                {
+                    _sub.Text = "Menyambung ke pengawas...";
+                    _sub.ForeColor = Theme.TextDim;
+                }
+                else
+                {
+                    _sub.Text = "Agent pengawas sedang tidak berjalan. "
+                                + "Hubungi orang tua kalau ini terus muncul.";
+                    _sub.ForeColor = Theme.Warn;
+                }
                 _list.Update(s, "Data belum tersedia.");
                 return;
             }
+            _staleSince = DateTime.MinValue;
 
             _sub.ForeColor = Theme.TextDim;
             StringBuilder sb = new StringBuilder();
@@ -262,6 +278,9 @@ namespace ScreenTimeGuard
         readonly HashSet<string> _closed = new HashSet<string>();
         string _warnedDay = "";
         bool _agentMissingNotified;
+
+        const int StaleGraceSeconds = 90;
+        DateTime _staleSince = DateTime.MinValue;
 
         public TrayApp()
         {
@@ -354,8 +373,16 @@ namespace ScreenTimeGuard
             Status s = StatusReader.Read();
             if (!StatusReader.IsFresh(s))
             {
-                _icon.Text = "Screen Time Guard - agent tidak aktif";
-                if (!_agentMissingNotified)
+                // Saat pembaruan dipasang atau komputer baru menyala, agent memang
+                // mati sebentar. Baru dianggap bermasalah setelah lewat masa tenggang.
+                if (_staleSince == DateTime.MinValue) _staleSince = DateTime.UtcNow;
+                bool reallyGone = (DateTime.UtcNow - _staleSince).TotalSeconds >= StaleGraceSeconds;
+
+                _icon.Text = reallyGone
+                    ? "Screen Time Guard - agent tidak aktif"
+                    : "Screen Time Guard - menyambung...";
+
+                if (reallyGone && !_agentMissingNotified)
                 {
                     _agentMissingNotified = true;
                     Toast.Show("Pengawas tidak aktif",
@@ -364,6 +391,7 @@ namespace ScreenTimeGuard
                 }
                 return;
             }
+            _staleSince = DateTime.MinValue;
             _agentMissingNotified = false;
 
             if (_warnedDay != s.Day)

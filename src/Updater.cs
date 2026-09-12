@@ -54,6 +54,8 @@ namespace ScreenTimeGuard
         const int MaxManifestBytes = 64 * 1024;
         const long MaxPayloadBytes = 40L * 1024 * 1024;
         const int TimeoutMs = 30000;
+        const int PayloadTimeoutMs = 120000;
+        const int DownloadAttempts = 3;
 
         public static string UpdateDir { get { return Path.Combine(Paths.Dir, "update"); } }
 
@@ -63,14 +65,16 @@ namespace ScreenTimeGuard
         {
             try
             {
-                ServicePointManager.SecurityProtocol =
-                    SecurityProtocolType.Tls12 | (SecurityProtocolType)12288 /* Tls13 */;
+                // TLS 1.2 saja: didukung semua Windows 10/11 dan oleh GitHub. Memaksa
+                // flag TLS 1.3 pada Windows 10 yang belum mendukungnya justru bisa
+                // membuat handshake menggantung.
+                if ((ServicePointManager.SecurityProtocol & SecurityProtocolType.Tls12) == 0)
+                    ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+                ServicePointManager.Expect100Continue = false;
+                if (ServicePointManager.DefaultConnectionLimit < 8)
+                    ServicePointManager.DefaultConnectionLimit = 8;
             }
-            catch
-            {
-                try { ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12; }
-                catch { }
-            }
+            catch { }
         }
 
         static void RequireHttps(string url)
@@ -82,13 +86,15 @@ namespace ScreenTimeGuard
                 throw new InvalidOperationException("Alamat pembaruan harus memakai https.");
         }
 
-        static HttpWebRequest MakeRequest(string url)
+        static HttpWebRequest MakeRequest(string url, int timeoutMs)
         {
             HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
             req.Method = "GET";
             req.UserAgent = "ScreenTimeGuard/" + AppInfo.Version;
-            req.Timeout = TimeoutMs;
-            req.ReadWriteTimeout = TimeoutMs;
+            req.Accept = "*/*";
+            req.KeepAlive = false;
+            req.Timeout = timeoutMs;
+            req.ReadWriteTimeout = timeoutMs;
             req.AllowAutoRedirect = true;
             req.MaximumAutomaticRedirections = 5;
             req.CachePolicy = new System.Net.Cache.RequestCachePolicy(
@@ -100,7 +106,7 @@ namespace ScreenTimeGuard
         {
             PrepareTls();
             RequireHttps(url);
-            using (WebResponse resp = MakeRequest(url).GetResponse())
+            using (WebResponse resp = MakeRequest(url, TimeoutMs).GetResponse())
             using (Stream s = resp.GetResponseStream())
             using (MemoryStream ms = new MemoryStream())
             {
@@ -118,25 +124,47 @@ namespace ScreenTimeGuard
             }
         }
 
+        /// <summary>Mengunduh ke berkas, dengan beberapa kali percobaan ulang.</summary>
         static void DownloadFile(string url, string path, long maxBytes)
         {
             PrepareTls();
             RequireHttps(url);
-            using (WebResponse resp = MakeRequest(url).GetResponse())
-            using (Stream s = resp.GetResponseStream())
-            using (FileStream fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+
+            Exception last = null;
+            for (int attempt = 1; attempt <= DownloadAttempts; attempt++)
             {
-                byte[] buf = new byte[65536];
-                long total = 0;
-                int n;
-                while ((n = s.Read(buf, 0, buf.Length)) > 0)
+                try
                 {
-                    total += n;
-                    if (total > maxBytes)
-                        throw new InvalidOperationException("Berkas pembaruan melebihi batas ukuran.");
-                    fs.Write(buf, 0, n);
+                    using (WebResponse resp = MakeRequest(url, PayloadTimeoutMs).GetResponse())
+                    using (Stream s = resp.GetResponseStream())
+                    using (FileStream fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+                    {
+                        byte[] buf = new byte[65536];
+                        long total = 0;
+                        int n;
+                        while ((n = s.Read(buf, 0, buf.Length)) > 0)
+                        {
+                            total += n;
+                            if (total > maxBytes)
+                                throw new InvalidOperationException("Berkas pembaruan melebihi batas ukuran.");
+                            fs.Write(buf, 0, n);
+                        }
+                    }
+                    return;
+                }
+                catch (InvalidOperationException) { throw; }
+                catch (Exception ex)
+                {
+                    last = ex;
+                    Log.Write("Unduhan percobaan " + attempt + " gagal: " + ex.Message);
+                    try { if (File.Exists(path)) File.Delete(path); }
+                    catch { }
+                    if (attempt < DownloadAttempts) Thread.Sleep(2000 * attempt);
                 }
             }
+            throw new InvalidOperationException(
+                "Gagal mengunduh setelah " + DownloadAttempts + " percobaan: "
+                + (last == null ? "sebab tidak diketahui" : last.Message));
         }
 
         // -------------------------------------------------------------- manifest

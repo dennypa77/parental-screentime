@@ -1,8 +1,8 @@
 {
-    "version":  "1.0.1",
-    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.0.1.exe",
-    "sha256":  "fdeb73766c9738c948c699fbd9f882535d2f79245636005bbaf43e356836c971",
-    "size":  94208,
-    "notes":  "Perbaikan pembacaan manifest pembaruan yang berawalan BOM UTF-8.",
+    "version":  "1.0.3",
+    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.0.3.exe",
+    "sha256":  "63bedbec46ff83116244a617f7235c20482012fd13ee506f868c6984b4b18a3e",
+    "size":  95744,
+    "notes":  "Jangan tampilkan peringatan \u0027pengawas tidak aktif\u0027 selama agent restart sebentar (mis. sedang memasang pembaruan atau komputer baru menyala).",
     "signature":  ""
 }

@@ -70,6 +70,14 @@ Copy-Item $builtExe $targetPath -Force
 $sha  = (Get-FileHash $targetPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $size = (Get-Item $targetPath).Length
 
+# Hanya versi terbaru yang perlu disimpan di repo; yang lama hanya menambah berat.
+Get-ChildItem $releaseDir -Filter 'ScreenTimeGuard-*.exe' |
+    Where-Object { $_.Name -ne $targetName } |
+    ForEach-Object {
+        Write-Host "  membuang rilis lama: $($_.Name)" -ForegroundColor DarkGray
+        Remove-Item $_.FullName -Force
+    }
+
 # ------------------------------------------------------------ 3. tanda tangan
 $signature = ''
 if (Test-Path $keyFile) {
