@@ -1,8 +1,8 @@
 {
-    "version":  "1.0.3",
-    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.0.3.exe",
-    "sha256":  "63bedbec46ff83116244a617f7235c20482012fd13ee506f868c6984b4b18a3e",
-    "size":  95744,
-    "notes":  "Jangan tampilkan peringatan \u0027pengawas tidak aktif\u0027 selama agent restart sebentar (mis. sedang memasang pembaruan atau komputer baru menyala).",
+    "version":  "1.1.0",
+    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.1.0.exe",
+    "sha256":  "64913121be96c65e1d70a09c0e8d7733d63b1f7e52621a0a6ef6418619bb55b5",
+    "size":  105472,
+    "notes":  "Perbaiki tombol Simpan/Batal yang terpotong di layar dengan penskalaan 125%/150%, dan tambahkan penghitung sisa waktu melayang yang selalu tampil di atas jendela lain.",
     "signature":  ""
 }

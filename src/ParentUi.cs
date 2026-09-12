@@ -27,16 +27,19 @@ namespace ScreenTimeGuard
             BackColor = Theme.Bg;
             ForeColor = Theme.Text;
             Font = Theme.Body;
-            ClientSize = new Size(380, 172);
+            ClientSize = new Size(400, 200);
+
+            Panel host = UiLayout.ScrollHost();
+            host.BackColor = Theme.Bg;
 
             Label title = new Label();
             title.Text = "Masukkan password orang tua";
             title.Font = Theme.H2;
             title.ForeColor = Theme.Text;
             title.AutoSize = false;
-            title.SetBounds(18, 18, 344, 24);
+            title.SetBounds(0, 4, 350, 26);
 
-            _password.SetBounds(18, 52, 344, 24);
+            _password.SetBounds(0, 34, 350, 26);
             _password.BackColor = Theme.CardAlt;
             _password.ForeColor = Theme.Text;
             _password.BorderStyle = BorderStyle.FixedSingle;
@@ -44,25 +47,27 @@ namespace ScreenTimeGuard
 
             _error.ForeColor = Theme.Bad;
             _error.AutoSize = false;
-            _error.SetBounds(18, 82, 344, 34);
+            _error.SetBounds(0, 66, 350, 38);
+
+            host.Controls.Add(title);
+            host.Controls.Add(_password);
+            host.Controls.Add(_error);
 
             Button ok = new Button();
             ok.Text = "Buka";
-            ok.SetBounds(186, 126, 84, 30);
             Theme.StyleButton(ok, true);
             ok.Click += delegate { TryLogin(ok); };
 
             Button cancel = new Button();
             cancel.Text = "Batal";
-            cancel.SetBounds(278, 126, 84, 30);
             cancel.DialogResult = DialogResult.Cancel;
             Theme.StyleButton(cancel, false);
 
-            Controls.Add(title);
-            Controls.Add(_password);
-            Controls.Add(_error);
-            Controls.Add(ok);
-            Controls.Add(cancel);
+            FlowLayoutPanel bar = UiLayout.BottomBar(cancel, ok);
+            bar.BackColor = Theme.Bg;
+
+            Controls.Add(host);
+            Controls.Add(bar);
             AcceptButton = ok;
             CancelButton = cancel;
         }
@@ -126,31 +131,21 @@ namespace ScreenTimeGuard
             _list.Columns.Add("Proses", 160);
             _list.DoubleClick += delegate { Choose(); };
 
-            Panel bottom = new Panel();
-            bottom.Dock = DockStyle.Bottom;
-            bottom.Height = 46;
-
             Button refresh = new Button();
             refresh.Text = "Muat ulang";
-            refresh.SetBounds(10, 8, 100, 30);
             refresh.Click += delegate { Populate(); };
 
             Button ok = new Button();
             ok.Text = "Pilih";
-            ok.SetBounds(258, 8, 90, 30);
             ok.Click += delegate { Choose(); };
 
             Button cancel = new Button();
             cancel.Text = "Batal";
-            cancel.SetBounds(356, 8, 90, 30);
             cancel.DialogResult = DialogResult.Cancel;
 
-            bottom.Controls.Add(refresh);
-            bottom.Controls.Add(ok);
-            bottom.Controls.Add(cancel);
-
             Controls.Add(_list);
-            Controls.Add(bottom);
+            Controls.Add(UiLayout.BottomBar(cancel, ok));
+            Controls.Add(UiLayout.BottomBarLeft(refresh));
             AcceptButton = ok;
             CancelButton = cancel;
 
@@ -214,33 +209,41 @@ namespace ScreenTimeGuard
         public AppEditForm(AppLimit existing)
         {
             Text = existing == null ? "Tambah aplikasi" : "Ubah aplikasi";
+            AutoScaleDimensions = new SizeF(7F, 15F);
+            AutoScaleMode = AutoScaleMode.Font;
             Icon = IconFactory.TrayIcon();
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false;
             MinimizeBox = false;
-            ClientSize = new Size(470, 350);
+            ClientSize = new Size(500, 420);
+            MinimumSize = new Size(430, 300);
 
-            int y = 16;
-            Controls.Add(Lbl("Nama tampilan (bebas, dilihat anak)", 16, y)); y += 20;
-            _name.SetBounds(16, y, 438, 24); Controls.Add(_name); y += 34;
+            // Isi diletakkan di panel yang bisa digulir dan tombol di panel yang
+            // menempel di bawah, supaya tombol tidak pernah terpotong di layar
+            // dengan penskalaan 125% / 150%.
+            Panel host = UiLayout.ScrollHost();
 
-            Controls.Add(Lbl("Nama proses (file .exe)", 16, y)); y += 20;
-            _process.SetBounds(16, y, 240, 24); Controls.Add(_process);
+            int y = 4;
+            host.Controls.Add(Lbl("Nama tampilan (bebas, dilihat anak)", 0, y)); y += 20;
+            _name.SetBounds(0, y, 438, 24); host.Controls.Add(_name); y += 34;
+
+            host.Controls.Add(Lbl("Nama proses (file .exe)", 0, y)); y += 20;
+            _process.SetBounds(0, y, 240, 24); host.Controls.Add(_process);
 
             Button pick = new Button();
             pick.Text = "Dari yang berjalan...";
-            pick.SetBounds(264, y - 1, 130, 26);
+            pick.SetBounds(248, y - 2, 140, 28);
             pick.Click += delegate
             {
                 using (ProcessPickerForm p = new ProcessPickerForm())
                     if (p.ShowDialog(this) == DialogResult.OK) _process.Text = p.Selected + ".exe";
             };
-            Controls.Add(pick);
+            host.Controls.Add(pick);
 
             Button browse = new Button();
             browse.Text = "Cari...";
-            browse.SetBounds(400, y - 1, 54, 26);
+            browse.SetBounds(394, y - 2, 64, 28);
             browse.Click += delegate
             {
                 using (OpenFileDialog d = new OpenFileDialog())
@@ -254,58 +257,58 @@ namespace ScreenTimeGuard
                     }
                 }
             };
-            Controls.Add(browse);
-            y += 36;
+            host.Controls.Add(browse);
+            y += 38;
 
-            Controls.Add(Lbl("Jatah hari sekolah (Senin-Jumat), dalam menit", 16, y)); y += 20;
-            _weekday.SetBounds(16, y, 90, 24);
+            host.Controls.Add(Lbl("Jatah hari sekolah (Senin-Jumat), dalam menit", 0, y)); y += 20;
+            _weekday.SetBounds(0, y, 90, 24);
             _weekday.Maximum = 1440;
-            Controls.Add(_weekday);
+            host.Controls.Add(_weekday);
             _weekdayUnlimited.Text = "Tanpa batas";
-            _weekdayUnlimited.SetBounds(118, y + 2, 110, 20);
+            _weekdayUnlimited.SetBounds(102, y + 2, 120, 22);
             _weekdayUnlimited.CheckedChanged += delegate { _weekday.Enabled = !_weekdayUnlimited.Checked; };
-            Controls.Add(_weekdayUnlimited);
+            host.Controls.Add(_weekdayUnlimited);
             y += 34;
 
-            Controls.Add(Lbl("Jatah akhir pekan (Sabtu-Minggu), dalam menit", 16, y)); y += 20;
-            _weekend.SetBounds(16, y, 90, 24);
+            host.Controls.Add(Lbl("Jatah akhir pekan (Sabtu-Minggu), dalam menit", 0, y)); y += 20;
+            _weekend.SetBounds(0, y, 90, 24);
             _weekend.Maximum = 1440;
-            Controls.Add(_weekend);
+            host.Controls.Add(_weekend);
             _weekendUnlimited.Text = "Tanpa batas";
-            _weekendUnlimited.SetBounds(118, y + 2, 110, 20);
+            _weekendUnlimited.SetBounds(102, y + 2, 120, 22);
             _weekendUnlimited.CheckedChanged += delegate { _weekend.Enabled = !_weekendUnlimited.Checked; };
-            Controls.Add(_weekendUnlimited);
+            host.Controls.Add(_weekendUnlimited);
             y += 36;
 
-            Controls.Add(Lbl("Cara menghitung waktu", 16, y)); y += 20;
-            _mode.SetBounds(16, y, 438, 24);
+            host.Controls.Add(Lbl("Cara menghitung waktu", 0, y)); y += 20;
+            _mode.SetBounds(0, y, 458, 24);
             _mode.DropDownStyle = ComboBoxStyle.DropDownList;
             _mode.Items.Add("Selama aplikasi terbuka (disarankan untuk game)");
             _mode.Items.Add("Hanya saat jendela aplikasi sedang dipakai");
-            Controls.Add(_mode);
-            y += 34;
+            host.Controls.Add(_mode);
+            y += 36;
 
             _enabled.Text = "Berlakukan pembatasan (jika dimatikan, hanya dicatat saja)";
-            _enabled.SetBounds(16, y, 438, 22);
-            Controls.Add(_enabled);
-            y += 24;
+            _enabled.AutoSize = true;
+            _enabled.Location = new Point(0, y);
+            host.Controls.Add(_enabled);
+            y += 28;
 
             _total.Text = "Hitung juga ke dalam batas total waktu layar harian";
-            _total.SetBounds(16, y, 438, 22);
-            Controls.Add(_total);
+            _total.AutoSize = true;
+            _total.Location = new Point(0, y);
+            host.Controls.Add(_total);
 
             Button ok = new Button();
             ok.Text = "Simpan";
-            ok.SetBounds(278, 308, 84, 30);
             ok.Click += delegate { Save(); };
 
             Button cancel = new Button();
             cancel.Text = "Batal";
-            cancel.SetBounds(370, 308, 84, 30);
             cancel.DialogResult = DialogResult.Cancel;
 
-            Controls.Add(ok);
-            Controls.Add(cancel);
+            Controls.Add(host);
+            Controls.Add(UiLayout.BottomBar(cancel, ok));
             AcceptButton = ok;
             CancelButton = cancel;
 
@@ -335,8 +338,8 @@ namespace ScreenTimeGuard
         {
             Label l = new Label();
             l.Text = text;
-            l.AutoSize = false;
-            l.SetBounds(x, y, 438, 18);
+            l.AutoSize = true;           // ikut membesar kalau font sistem besar
+            l.Location = new Point(x, y);
             return l;
         }
 
@@ -383,6 +386,7 @@ namespace ScreenTimeGuard
 
         NumericUpDown _resetHour, _grace, _totalWeekday, _totalWeekend, _pauseMinutes;
         CheckBox _totalWeekdayOff, _totalWeekendOff, _bedtimeEnabled, _autoCheck;
+        CheckBox _overlayEnabled, _overlayLocked;
         TextBox _warnMinutes, _bedtimeStart, _bedtimeEnd, _updateNotes, _updateUrl, _updateKey;
         Label _todaySummary, _versionLabel, _updateStatus;
         Button _checkButton, _installButton;
@@ -393,6 +397,8 @@ namespace ScreenTimeGuard
             _password = password;
 
             Text = "Screen Time Guard - Panel Orang Tua";
+            AutoScaleDimensions = new SizeF(7F, 15F);
+            AutoScaleMode = AutoScaleMode.Font;
             Icon = IconFactory.TrayIcon();
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(760, 560);
@@ -438,20 +444,12 @@ namespace ScreenTimeGuard
             _apps.Columns.Add("Aktif", 60);
             _apps.DoubleClick += delegate { EditApp(); };
 
-            Panel bar = new Panel();
-            bar.Dock = DockStyle.Bottom;
-            bar.Height = 46;
+            Button add = MakeButton("Tambah", delegate { AddApp(); });
+            Button edit = MakeButton("Ubah", delegate { EditApp(); });
+            Button del = MakeButton("Hapus", delegate { DeleteApp(); });
+            Button save = MakeButton("Simpan perubahan", delegate { SaveSettings(); });
 
-            Button add = MakeButton("Tambah", 0, delegate { AddApp(); });
-            Button edit = MakeButton("Ubah", 100, delegate { EditApp(); });
-            Button del = MakeButton("Hapus", 200, delegate { DeleteApp(); });
-            Button save = MakeButton("Simpan perubahan", 320, delegate { SaveSettings(); });
-            save.Width = 160;
-
-            bar.Controls.Add(add);
-            bar.Controls.Add(edit);
-            bar.Controls.Add(del);
-            bar.Controls.Add(save);
+            FlowLayoutPanel bar = UiLayout.BottomBarLeft(add, edit, del, save);
 
             Label hint = new Label();
             hint.Text = "Jatah 0 menit berarti aplikasi tidak boleh dibuka sama sekali. "
@@ -466,11 +464,13 @@ namespace ScreenTimeGuard
             return page;
         }
 
-        static Button MakeButton(string text, int x, EventHandler onClick)
+        static Button MakeButton(string text, EventHandler onClick)
         {
             Button b = new Button();
             b.Text = text;
-            b.SetBounds(x, 8, 92, 30);
+            b.AutoSize = true;
+            b.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            b.MinimumSize = new Size(92, 30);
             b.Click += onClick;
             return b;
         }
@@ -580,6 +580,22 @@ namespace ScreenTimeGuard
             page.Controls.Add(_totalWeekendOff);
             y += 38;
 
+            page.Controls.Add(Section("Penghitung melayang di layar anak", 0, ref y));
+            _overlayEnabled = Check("Tampilkan penghitung sisa waktu yang selalu di atas", 0, y);
+            _overlayEnabled.Width = 460;
+            page.Controls.Add(_overlayEnabled);
+            y += 26;
+
+            _overlayLocked = Check("Anak tidak boleh menyembunyikannya", 0, y);
+            _overlayLocked.Width = 460;
+            _overlayEnabled.CheckedChanged += delegate { _overlayLocked.Enabled = _overlayEnabled.Checked; };
+            page.Controls.Add(_overlayLocked);
+            y += 22;
+
+            page.Controls.Add(Hint("Anak bisa menggeser posisinya, dan klik kanan untuk memperkecil "
+                                   + "atau membuka jendela lengkap.", 0, y));
+            y += 40;
+
             page.Controls.Add(Section("Jam tidur", 0, ref y));
             _bedtimeEnabled = Check("Blokir semua aplikasi yang diawasi pada jam tidur", 0, y);
             _bedtimeEnabled.Width = 400;
@@ -672,6 +688,10 @@ namespace ScreenTimeGuard
                 ? 180 : Math.Min(1440, _settings.TotalWeekendMinutes);
             _totalWeekend.Enabled = !_totalWeekendOff.Checked;
 
+            _overlayEnabled.Checked = _settings.OverlayEnabled;
+            _overlayLocked.Checked = _settings.OverlayLocked;
+            _overlayLocked.Enabled = _overlayEnabled.Checked;
+
             _bedtimeEnabled.Checked = _settings.BedtimeEnabled;
             _bedtimeStart.Text = _settings.BedtimeStart;
             _bedtimeEnd.Text = _settings.BedtimeEnd;
@@ -690,6 +710,8 @@ namespace ScreenTimeGuard
             _settings.GraceSeconds = (int)_grace.Value;
             _settings.TotalWeekdayMinutes = _totalWeekdayOff.Checked ? -1 : (int)_totalWeekday.Value;
             _settings.TotalWeekendMinutes = _totalWeekendOff.Checked ? -1 : (int)_totalWeekend.Value;
+            _settings.OverlayEnabled = _overlayEnabled.Checked;
+            _settings.OverlayLocked = _overlayLocked.Checked;
             _settings.BedtimeEnabled = _bedtimeEnabled.Checked;
             _settings.BedtimeStart = _bedtimeStart.Text.Trim();
             _settings.BedtimeEnd = _bedtimeEnd.Text.Trim();
@@ -721,40 +743,34 @@ namespace ScreenTimeGuard
             _todaySummary.Height = 40;
             _todaySummary.ForeColor = SystemColors.GrayText;
 
-            Panel bar = new Panel();
-            bar.Dock = DockStyle.Bottom;
-            bar.Height = 84;
-
-            bar.Controls.Add(MakeButton("+15 menit", 0, delegate { Bonus(15); }));
-            bar.Controls.Add(MakeButton("+30 menit", 100, delegate { Bonus(30); }));
-            bar.Controls.Add(MakeButton("-15 menit", 200, delegate { Bonus(-15); }));
-            Button custom = MakeButton("Bonus lain...", 300, delegate { BonusCustom(); });
-            custom.Width = 110;
-            bar.Controls.Add(custom);
-            Button reset = MakeButton("Reset pemakaian", 420, delegate { ResetUsage(); });
-            reset.Width = 140;
-            bar.Controls.Add(reset);
+            FlowLayoutPanel bonusBar = UiLayout.BottomBarLeft(
+                MakeButton("+15 menit", delegate { Bonus(15); }),
+                MakeButton("+30 menit", delegate { Bonus(30); }),
+                MakeButton("-15 menit", delegate { Bonus(-15); }),
+                MakeButton("Bonus lain...", delegate { BonusCustom(); }),
+                MakeButton("Reset pemakaian", delegate { ResetUsage(); }));
 
             Label pauseLbl = new Label();
             pauseLbl.Text = "Jeda seluruh pengawasan selama";
-            pauseLbl.SetBounds(0, 50, 190, 22);
-            bar.Controls.Add(pauseLbl);
+            pauseLbl.AutoSize = true;
+            pauseLbl.Padding = new Padding(0, 7, 0, 0);
 
-            _pauseMinutes = Num(192, 46, 1, 720, 30);
-            bar.Controls.Add(_pauseMinutes);
+            _pauseMinutes = new NumericUpDown();
+            _pauseMinutes.Minimum = 1;
+            _pauseMinutes.Maximum = 720;
+            _pauseMinutes.Value = 30;
+            _pauseMinutes.Width = 66;
 
-            Button pause = MakeButton("Jeda", 258, delegate { Pause((int)_pauseMinutes.Value); });
-            pause.Top = 46;
-            bar.Controls.Add(pause);
-
-            Button unpause = MakeButton("Batalkan jeda", 358, delegate { Pause(0); });
-            unpause.Top = 46;
-            unpause.Width = 110;
-            bar.Controls.Add(unpause);
+            FlowLayoutPanel pauseBar = UiLayout.BottomBarLeft(
+                pauseLbl,
+                _pauseMinutes,
+                MakeButton("Jeda", delegate { Pause((int)_pauseMinutes.Value); }),
+                MakeButton("Batalkan jeda", delegate { Pause(0); }));
 
             page.Controls.Add(_today);
             page.Controls.Add(_todaySummary);
-            page.Controls.Add(bar);
+            page.Controls.Add(bonusBar);
+            page.Controls.Add(pauseBar);
             return page;
         }
 
@@ -863,6 +879,7 @@ namespace ScreenTimeGuard
         {
             TabPage page = new TabPage("Keamanan");
             page.Padding = new Padding(14);
+            page.AutoScroll = true;
 
             Label l = new Label();
             l.Text = "Ganti password orang tua";
@@ -945,15 +962,9 @@ namespace ScreenTimeGuard
             _history.Font = new Font("Consolas", 9.5f);
             _history.Dock = DockStyle.Fill;
 
-            Panel bar = new Panel();
-            bar.Dock = DockStyle.Bottom;
-            bar.Height = 46;
-            Button load = MakeButton("Muat ulang", 0, delegate { LoadHistory(); });
-            load.Width = 110;
-            bar.Controls.Add(load);
-
             page.Controls.Add(_history);
-            page.Controls.Add(bar);
+            page.Controls.Add(UiLayout.BottomBarLeft(
+                MakeButton("Muat ulang", delegate { LoadHistory(); })));
 
             LoadHistory();
             return page;
@@ -978,6 +989,7 @@ namespace ScreenTimeGuard
         {
             TabPage page = new TabPage("Pembaruan");
             page.Padding = new Padding(14);
+            page.AutoScroll = true;
 
             Label heading = new Label();
             heading.Text = "Pembaruan aplikasi";

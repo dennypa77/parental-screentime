@@ -45,6 +45,66 @@ namespace ScreenTimeGuard
         }
     }
 
+    /// <summary>
+    /// Penata letak yang tahan penskalaan DPI. Tombol yang diposisikan dengan
+    /// koordinat tetap akan terpotong di layar 125%/150%, jadi baris tombol
+    /// selalu dibuat sebagai panel yang menempel di tepi dan ikut membesar.
+    /// </summary>
+    public static class UiLayout
+    {
+        /// <summary>Baris tombol rata kanan yang menempel di bawah jendela.</summary>
+        public static FlowLayoutPanel BottomBar(params Control[] rightToLeft)
+        {
+            FlowLayoutPanel bar = NewBar(FlowDirection.RightToLeft);
+            for (int i = 0; i < rightToLeft.Length; i++) bar.Controls.Add(Size(rightToLeft[i]));
+            return bar;
+        }
+
+        /// <summary>Baris tombol rata kiri yang menempel di bawah jendela.</summary>
+        public static FlowLayoutPanel BottomBarLeft(params Control[] leftToRight)
+        {
+            FlowLayoutPanel bar = NewBar(FlowDirection.LeftToRight);
+            for (int i = 0; i < leftToRight.Length; i++) bar.Controls.Add(Size(leftToRight[i]));
+            return bar;
+        }
+
+        static FlowLayoutPanel NewBar(FlowDirection direction)
+        {
+            FlowLayoutPanel bar = new FlowLayoutPanel();
+            bar.Dock = DockStyle.Bottom;
+            bar.FlowDirection = direction;
+            bar.AutoSize = true;
+            bar.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            bar.WrapContents = true;
+            bar.Padding = new Padding(8, 6, 8, 6);
+            return bar;
+        }
+
+        static Control Size(Control c)
+        {
+            c.AutoSize = true;
+            c.Margin = new Padding(4, 3, 4, 3);
+            Button b = c as Button;
+            if (b != null)
+            {
+                b.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+                b.MinimumSize = new System.Drawing.Size(92, 30);
+                b.Padding = new Padding(10, 0, 10, 0);
+            }
+            return c;
+        }
+
+        /// <summary>Wadah isi yang bisa digulir, supaya tidak ada kontrol yang tak terjangkau.</summary>
+        public static Panel ScrollHost()
+        {
+            Panel p = new Panel();
+            p.Dock = DockStyle.Fill;
+            p.AutoScroll = true;
+            p.Padding = new Padding(14, 12, 14, 4);
+            return p;
+        }
+    }
+
     public static class Native
     {
         [DllImport("user32.dll")]
@@ -52,6 +112,26 @@ namespace ScreenTimeGuard
 
         [DllImport("user32.dll")]
         static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+            int X, int Y, int cx, int cy, uint uFlags);
+
+        static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+        const uint SWP_NOSIZE = 0x0001;
+        const uint SWP_NOMOVE = 0x0002;
+        const uint SWP_NOACTIVATE = 0x0010;
+
+        /// <summary>
+        /// Menegakkan kembali status "selalu di atas" tanpa merebut fokus.
+        /// Aplikasi layar penuh kadang merebut posisi teratas.
+        /// </summary>
+        public static void ReassertTopMost(IntPtr handle)
+        {
+            if (handle == IntPtr.Zero) return;
+            try { SetWindowPos(handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); }
+            catch { }
+        }
 
         public static string ForegroundProcessName()
         {
@@ -207,37 +287,42 @@ namespace ScreenTimeGuard
             BackColor = Theme.Bg;
             ForeColor = Theme.Text;
             Font = Theme.Body;
-            ClientSize = new Size(380, 130);
+            ClientSize = new Size(400, 160);
+
+            Panel host = UiLayout.ScrollHost();
+            host.BackColor = Theme.Bg;
 
             Label lbl = new Label();
             lbl.Text = label;
             lbl.ForeColor = Theme.Text;
             lbl.AutoSize = false;
-            lbl.SetBounds(16, 16, 348, 20);
+            lbl.SetBounds(0, 4, 350, 22);
 
-            _input.SetBounds(16, 42, 348, 24);
+            _input.SetBounds(0, 30, 350, 26);
             _input.BackColor = Theme.CardAlt;
             _input.ForeColor = Theme.Text;
             _input.BorderStyle = BorderStyle.FixedSingle;
             _input.Text = initial == null ? "" : initial;
             if (password) _input.UseSystemPasswordChar = true;
 
+            host.Controls.Add(lbl);
+            host.Controls.Add(_input);
+
             Button ok = new Button();
             ok.Text = "OK";
-            ok.SetBounds(190, 84, 84, 30);
             ok.DialogResult = DialogResult.OK;
             Theme.StyleButton(ok, true);
 
             Button cancel = new Button();
             cancel.Text = "Batal";
-            cancel.SetBounds(282, 84, 84, 30);
             cancel.DialogResult = DialogResult.Cancel;
             Theme.StyleButton(cancel, false);
 
-            Controls.Add(lbl);
-            Controls.Add(_input);
-            Controls.Add(ok);
-            Controls.Add(cancel);
+            FlowLayoutPanel bar = UiLayout.BottomBar(cancel, ok);
+            bar.BackColor = Theme.Bg;
+
+            Controls.Add(host);
+            Controls.Add(bar);
             AcceptButton = ok;
             CancelButton = cancel;
         }

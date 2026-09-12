@@ -56,6 +56,8 @@ namespace ScreenTimeGuard
         [DataMember(Order = 12)] public string UpdateUrl;         // manifest pembaruan (wajib https)
         [DataMember(Order = 13)] public bool AutoCheckUpdate;     // cek otomatis sekali sehari
         [DataMember(Order = 14)] public string UpdatePublicKey;   // opsional: kunci publik RSA (base64 XML)
+        [DataMember(Order = 15)] public bool OverlayEnabled;      // penghitung melayang di layar anak
+        [DataMember(Order = 16)] public bool OverlayLocked;       // anak tidak boleh menyembunyikannya
         [DataMember(Order = 20)] public List<AppLimit> Apps;
 
         public Settings()
@@ -74,6 +76,8 @@ namespace ScreenTimeGuard
             UpdateUrl = AppInfo.DefaultUpdateUrl;
             AutoCheckUpdate = true;
             UpdatePublicKey = "";
+            OverlayEnabled = true;
+            OverlayLocked = false;
             Apps = new List<AppLimit>();
         }
 
@@ -179,6 +183,8 @@ namespace ScreenTimeGuard
         [DataMember(Order = 13)] public string WarnMinutes;
         [DataMember(Order = 14)] public string AgentVersion;
         [DataMember(Order = 15)] public string UpdateAvailableVersion;   // "" = tidak ada
+        [DataMember(Order = 16)] public bool OverlayEnabled;
+        [DataMember(Order = 17)] public bool OverlayLocked;
         [DataMember(Order = 20)] public List<StatusApp> Apps;
 
         public Status()

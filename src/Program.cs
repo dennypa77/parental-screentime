@@ -140,67 +140,71 @@ namespace ScreenTimeGuard
         public SetupForm()
         {
             Text = "Screen Time Guard - Pengaturan Awal";
+            AutoScaleDimensions = new SizeF(7F, 15F);
+            AutoScaleMode = AutoScaleMode.Font;
             Icon = IconFactory.TrayIcon();
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;
             MaximizeBox = false;
             MinimizeBox = false;
-            ClientSize = new Size(440, 290);
+            ClientSize = new Size(470, 330);
+            MinimumSize = new Size(420, 280);
             Font = new Font("Segoe UI", 9f);
+
+            Panel host = UiLayout.ScrollHost();
 
             bool exists = File.Exists(Paths.Settings);
 
             Label title = new Label();
             title.Text = exists ? "Atur ulang password orang tua" : "Buat password orang tua";
             title.Font = new Font("Segoe UI Semibold", 11f);
-            title.SetBounds(16, 16, 400, 24);
+            title.SetBounds(0, 4, 420, 26);
 
             Label desc = new Label();
             desc.Text = "Password ini dipakai untuk membuka panel pengaturan di komputer anak. "
                       + "Anak hanya bisa melihat sisa waktu, tidak bisa mengubah apa pun.";
-            desc.SetBounds(16, 42, 408, 40);
+            desc.SetBounds(0, 32, 424, 42);
             desc.ForeColor = SystemColors.GrayText;
 
             Label l1 = new Label();
             l1.Text = "Password (minimal 4 karakter)";
-            l1.SetBounds(16, 92, 400, 18);
-            _p1.SetBounds(16, 112, 280, 24);
+            l1.SetBounds(0, 82, 420, 20);
+            _p1.SetBounds(0, 104, 290, 26);
             _p1.UseSystemPasswordChar = true;
 
             Label l2 = new Label();
             l2.Text = "Ulangi password";
-            l2.SetBounds(16, 144, 400, 18);
-            _p2.SetBounds(16, 164, 280, 24);
+            l2.SetBounds(0, 138, 420, 20);
+            _p2.SetBounds(0, 160, 290, 26);
             _p2.UseSystemPasswordChar = true;
 
             Label l3 = new Label();
             l3.Text = "Jatah harian direset tiap pukul";
-            l3.SetBounds(16, 200, 200, 20);
-            _resetHour.SetBounds(220, 196, 60, 24);
+            l3.SetBounds(0, 200, 210, 22);
+            _resetHour.SetBounds(214, 196, 66, 26);
             _resetHour.Minimum = 0;
             _resetHour.Maximum = 23;
             _resetHour.Value = 4;
 
+            host.Controls.Add(title);
+            host.Controls.Add(desc);
+            host.Controls.Add(l1);
+            host.Controls.Add(_p1);
+            host.Controls.Add(l2);
+            host.Controls.Add(_p2);
+            host.Controls.Add(l3);
+            host.Controls.Add(_resetHour);
+
             Button ok = new Button();
             ok.Text = "Simpan";
-            ok.SetBounds(248, 242, 84, 30);
             ok.Click += delegate { Save(); };
 
             Button cancel = new Button();
             cancel.Text = "Batal";
-            cancel.SetBounds(340, 242, 84, 30);
             cancel.DialogResult = DialogResult.Cancel;
 
-            Controls.Add(title);
-            Controls.Add(desc);
-            Controls.Add(l1);
-            Controls.Add(_p1);
-            Controls.Add(l2);
-            Controls.Add(_p2);
-            Controls.Add(l3);
-            Controls.Add(_resetHour);
-            Controls.Add(ok);
-            Controls.Add(cancel);
+            Controls.Add(host);
+            Controls.Add(UiLayout.BottomBar(cancel, ok));
             AcceptButton = ok;
             CancelButton = cancel;
 

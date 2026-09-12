@@ -7,7 +7,7 @@
     /// </summary>
     public static class AppInfo
     {
-        public const string Version = "1.0.3";
+        public const string Version = "1.1.0";
 
         public const string Name = "Screen Time Guard";
 
@@ -19,5 +19,6 @@
         public const string TaskTray = "ScreenTimeGuard Tray";
     }
 }
+
 
 

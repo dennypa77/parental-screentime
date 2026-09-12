@@ -32,6 +32,9 @@ ada di setiap Windows 10/11.
   salah tercatat di `log.txt`.
 - **Mode "hanya dicatat"** — aplikasi bisa dipantau tanpa dibatasi, berguna untuk melihat dulu
   kebiasaan anak sebelum menetapkan angka.
+- **Penghitung melayang** — kotak kecil yang selalu tampil di atas jendela lain, berisi sisa
+  waktu tiap aplikasi. Anak bisa menggesernya; orang tua bisa mengunci supaya tidak bisa
+  disembunyikan.
 - **Pembaruan sekali klik** — dari komputer anak, tanpa perlu membangun ulang atau menyalin file.
   Lihat bagian [Pembaruan](#pembaruan).
 
@@ -85,6 +88,29 @@ pengaturan, atau menghapus program — tidak ada tools yang bisa mencegah itu. C
 **Anak:** klik dua kali ikon tray → jendela **Sisa waktu hari ini**. Setiap aplikasi punya
 bilah warna: hijau (masih banyak), kuning (menipis), merah (habis). Jadi kalau jatah Roblox
 habis, dia langsung lihat Minecraft Education masih tersisa berapa menit.
+
+### Penghitung melayang
+
+Selain jendela di atas, ada kotak kecil yang **selalu tampil di atas jendela lain** berisi
+hitungan mundur tiap aplikasi, jadi sisa waktu terus terlihat tanpa membuka apa pun:
+
+```
+  Sisa waktu                ●
+  ● Roblox              03:00      merah  - hampir habis
+  ● Minecraft Educ...  1:10:00     hijau  - masih banyak
+  ● YouTube (Chrom...    habis
+  ● Discord             25:00
+  Total                   1:50:00
+```
+
+- **Geser** dengan menahan tombol kiri mouse; posisinya diingat.
+- **Klik kanan** untuk memperkecil jadi satu baris, membuka jendela lengkap, atau menyembunyikan.
+- **Klik dua kali** untuk membuka jendela lengkap.
+- Tidak pernah merebut fokus, jadi aman saat anak sedang bermain.
+- Yang sedang berjalan ditaruh paling atas dan dicetak tebal.
+
+Diatur di Panel orang tua → **Aturan umum** → *Penghitung melayang*. Kalau **"Anak tidak boleh
+menyembunyikannya"** dicentang, pilihan sembunyikan di menu tray dimatikan.
 
 ### Arti angka jatah
 
@@ -239,9 +265,9 @@ Supaya tidak ada harapan yang keliru:
 3. **Mengganti nama `.exe`** (misal `RobloxPlayerBeta.exe` → `game.exe`) bisa menghindar,
    karena pencocokan berdasarkan nama proses. Untuk anak yang lebih besar, `log.txt` akan
    memperlihatkan polanya.
-4. **Game layar penuh eksklusif** mungkin menutupi notifikasi peringatan. Penutupan
-   aplikasinya tetap jalan. Kebanyakan game modern memakai *borderless fullscreen*
-   sehingga notifikasi tetap terlihat.
+4. **Game layar penuh eksklusif** mungkin menutupi notifikasi peringatan dan penghitung
+   melayang. Penutupan aplikasinya tetap jalan. Kebanyakan game modern memakai
+   *borderless fullscreen* sehingga keduanya tetap terlihat.
 5. **Ini bukan pemblokir situs web.** Membatasi `chrome.exe` membatasi seluruh browser,
    bukan per situs. Untuk penyaringan konten, pakai DNS keluarga atau Microsoft Family Safety
    sebagai pelengkap.

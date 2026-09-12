@@ -35,7 +35,7 @@ namespace ScreenTimeGuard
     /// <summary>Daftar aplikasi bergambar sendiri, dipakai di jendela anak.</summary>
     public class StatusPanel : Panel
     {
-        const int RowHeight = 72;
+        static int RowHeight { get { return Theme.Mono.Height + Theme.Body.Height + 30; } }
         Status _status;
         string _message = "Menunggu data dari agent...";
 
@@ -262,6 +262,337 @@ namespace ScreenTimeGuard
         }
     }
 
+    /// <summary>Posisi dan bentuk penghitung melayang, disimpan per pengguna.</summary>
+    [System.Runtime.Serialization.DataContract]
+    public class OverlayPrefs
+    {
+        [System.Runtime.Serialization.DataMember(Order = 1)] public int X;
+        [System.Runtime.Serialization.DataMember(Order = 2)] public int Y;
+        [System.Runtime.Serialization.DataMember(Order = 3)] public bool Collapsed;
+        [System.Runtime.Serialization.DataMember(Order = 4)] public bool Hidden;
+
+        public OverlayPrefs() { X = -1; Y = -1; }
+
+        static string FilePath
+        {
+            get
+            {
+                string dir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "ScreenTimeGuard");
+                return Path.Combine(dir, "overlay.json");
+            }
+        }
+
+        public static OverlayPrefs Load()
+        {
+            try
+            {
+                if (File.Exists(FilePath))
+                    return Json.Read<OverlayPrefs>(File.ReadAllText(FilePath, Encoding.UTF8));
+            }
+            catch { }
+            return new OverlayPrefs();
+        }
+
+        public void Save()
+        {
+            try
+            {
+                string path = FilePath;
+                string dir = Path.GetDirectoryName(path);
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                File.WriteAllText(path, Json.Write(this), new UTF8Encoding(false));
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>
+    /// Penghitung kecil yang selalu tampil di atas jendela lain, supaya anak
+    /// bisa terus melihat sisa waktunya tanpa membuka apa pun.
+    /// Bisa digeser, dan posisinya diingat.
+    /// </summary>
+    public class OverlayForm : Form
+    {
+        const int WS_EX_TOPMOST = 0x00000008;
+        const int WS_EX_NOACTIVATE = 0x08000000;
+        const int WS_EX_TOOLWINDOW = 0x00000080;
+
+        const int MaxRows = 6;
+
+        // Ukuran diturunkan dari tinggi font supaya tetap pas saat pengguna memakai
+        // penskalaan teks Windows 125% / 150%.
+        static int HeaderHeight { get { return Theme.Body.Height + 6; } }
+        static int RowHeight { get { return Theme.BodyBold.Height + 6; } }
+        static int PanelWidth { get { return Theme.Body.Height * 13; } }
+        static int ValueWidth { get { return Theme.Body.Height * 5; } }
+
+        readonly Timer _timer = new Timer();
+        readonly OverlayPrefs _prefs;
+        readonly List<StatusApp> _rows = new List<StatusApp>();
+
+        Status _status;
+        bool _dragging;
+        Point _dragStart;
+        int _topMostTicks;
+        bool _locked;
+
+        public event EventHandler OpenRequested;
+        public event EventHandler HideRequested;
+
+        protected override bool ShowWithoutActivation { get { return true; } }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
+                return cp;
+            }
+        }
+
+        public OverlayForm(OverlayPrefs prefs)
+        {
+            _prefs = prefs;
+
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            TopMost = true;
+            StartPosition = FormStartPosition.Manual;
+            BackColor = Theme.Bg;
+            Opacity = 0.88;
+            // Digambar sendiri dengan metrik piksel, jadi jangan diskalakan WinForms.
+            AutoScaleMode = AutoScaleMode.None;
+            Width = PanelWidth;
+            Height = HeaderHeight + RowHeight + 8;
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint
+                     | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+
+            ContextMenuStrip menu = new ContextMenuStrip();
+            menu.Items.Add("Buka jendela sisa waktu", null, delegate { RaiseOpen(); });
+            ToolStripItem collapse = menu.Items.Add("Perkecil / perbesar", null, delegate { ToggleCollapsed(); });
+            collapse.Name = "collapse";
+            menu.Items.Add(new ToolStripSeparator());
+            ToolStripItem hide = menu.Items.Add("Sembunyikan", null, delegate { RaiseHide(); });
+            hide.Name = "hide";
+            menu.Opening += delegate { hide.Enabled = !_locked; };
+            ContextMenuStrip = menu;
+
+            MouseDown += OnMouseDownHandler;
+            MouseMove += OnMouseMoveHandler;
+            MouseUp += OnMouseUpHandler;
+            DoubleClick += delegate { RaiseOpen(); };
+
+            _timer.Interval = 1000;
+            _timer.Tick += delegate { Refresh0(); };
+            _timer.Start();
+
+            Refresh0();
+            PlaceInitial();
+        }
+
+        void RaiseOpen()
+        {
+            EventHandler h = OpenRequested;
+            if (h != null) h(this, EventArgs.Empty);
+        }
+
+        void RaiseHide()
+        {
+            if (_locked) return;
+            _prefs.Hidden = true;
+            _prefs.Save();
+            EventHandler h = HideRequested;
+            if (h != null) h(this, EventArgs.Empty);
+        }
+
+        void ToggleCollapsed()
+        {
+            _prefs.Collapsed = !_prefs.Collapsed;
+            _prefs.Save();
+            Refresh0();
+        }
+
+        void PlaceInitial()
+        {
+            Rectangle wa = Screen.PrimaryScreen.WorkingArea;
+            int x = _prefs.X;
+            int y = _prefs.Y;
+            if (x < 0 || y < 0) { x = wa.Right - Width - 20; y = wa.Top + 20; }
+            Location = ClampToScreens(new Point(x, y));
+        }
+
+        Point ClampToScreens(Point p)
+        {
+            // Pastikan tetap terlihat kalau susunan monitor berubah.
+            Rectangle bounds = new Rectangle(p, Size);
+            bool visible = false;
+            for (int i = 0; i < Screen.AllScreens.Length; i++)
+                if (Screen.AllScreens[i].WorkingArea.IntersectsWith(bounds)) visible = true;
+
+            if (visible)
+            {
+                Screen s = Screen.FromPoint(p);
+                int x = Math.Max(s.WorkingArea.Left, Math.Min(p.X, s.WorkingArea.Right - Width));
+                int y = Math.Max(s.WorkingArea.Top, Math.Min(p.Y, s.WorkingArea.Bottom - Height));
+                return new Point(x, y);
+            }
+
+            Rectangle wa = Screen.PrimaryScreen.WorkingArea;
+            return new Point(wa.Right - Width - 20, wa.Top + 20);
+        }
+
+        void OnMouseDownHandler(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            _dragging = true;
+            _dragStart = e.Location;
+        }
+
+        void OnMouseMoveHandler(object sender, MouseEventArgs e)
+        {
+            if (!_dragging) return;
+            Location = new Point(Location.X + e.X - _dragStart.X, Location.Y + e.Y - _dragStart.Y);
+        }
+
+        void OnMouseUpHandler(object sender, MouseEventArgs e)
+        {
+            if (!_dragging) return;
+            _dragging = false;
+            Location = ClampToScreens(Location);
+            _prefs.X = Location.X;
+            _prefs.Y = Location.Y;
+            _prefs.Save();
+        }
+
+        void Refresh0()
+        {
+            _status = StatusReader.Read();
+
+            _rows.Clear();
+            if (_status != null)
+            {
+                _locked = _status.OverlayLocked;
+
+                List<StatusApp> candidates = new List<StatusApp>();
+                for (int i = 0; i < _status.Apps.Count; i++)
+                {
+                    StatusApp a = _status.Apps[i];
+                    if (!a.Enabled) continue;          // hanya dicatat, bukan dibatasi
+                    if (a.LimitSeconds < 0) continue;  // tanpa batas, tidak perlu hitungan mundur
+                    candidates.Add(a);
+                }
+
+                // Yang sedang berjalan lebih dulu, lalu yang sisanya paling sedikit.
+                candidates.Sort(delegate (StatusApp a, StatusApp b)
+                {
+                    if (a.Running != b.Running) return a.Running ? -1 : 1;
+                    return a.RemainingSeconds.CompareTo(b.RemainingSeconds);
+                });
+
+                int take = _prefs.Collapsed ? 1 : Math.Min(MaxRows, candidates.Count);
+                for (int i = 0; i < take; i++) _rows.Add(candidates[i]);
+            }
+
+            int bodyRows = Math.Max(1, _rows.Count);
+            bool showTotal = !_prefs.Collapsed && _status != null && _status.TotalLimitSeconds >= 0;
+            int desired = HeaderHeight + bodyRows * RowHeight + (showTotal ? RowHeight : 0) + 8;
+            if (Height != desired) Height = desired;
+
+            // Aplikasi layar penuh kadang merebut posisi teratas; tegakkan berkala.
+            _topMostTicks++;
+            if (_topMostTicks % 5 == 0 && IsHandleCreated) Native.ReassertTopMost(Handle);
+
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Theme.Card);
+
+            using (Pen border = new Pen(Color.FromArgb(90, 96, 112)))
+                g.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
+
+            // Kepala
+            using (SolidBrush hb = new SolidBrush(Theme.CardAlt))
+                g.FillRectangle(hb, 1, 1, Width - 2, HeaderHeight);
+            using (SolidBrush tb = new SolidBrush(Theme.TextDim))
+                g.DrawString("Sisa waktu", Theme.Body, tb, 7, 3);
+
+            bool stale = !StatusReader.IsFresh(_status);
+            using (SolidBrush db = new SolidBrush(stale ? Theme.Warn : Theme.Good))
+                g.FillEllipse(db, Width - 16, (HeaderHeight - 7) / 2, 7, 7);
+
+            int y = HeaderHeight + 4;
+
+            if (_rows.Count == 0)
+            {
+                using (SolidBrush b = new SolidBrush(Theme.TextDim))
+                    g.DrawString(stale ? "menyambung..." : "tidak ada batas hari ini",
+                        Theme.Body, b, 8, y + 2);
+                return;
+            }
+
+            for (int i = 0; i < _rows.Count; i++)
+            {
+                DrawRow(g, _rows[i], y);
+                y += RowHeight;
+            }
+
+            if (!_prefs.Collapsed && _status != null && _status.TotalLimitSeconds >= 0)
+            {
+                using (Pen sep = new Pen(Color.FromArgb(70, 76, 90)))
+                    g.DrawLine(sep, 8, y + 1, Width - 8, y + 1);
+                bool empty = _status.TotalRemainingSeconds <= 0;
+                using (SolidBrush b = new SolidBrush(Theme.TextDim))
+                    g.DrawString("Total", Theme.Body, b, 8, y + 3);
+                using (SolidBrush b = new SolidBrush(empty ? Theme.Bad : Theme.TextDim))
+                using (StringFormat sf = new StringFormat())
+                {
+                    sf.Alignment = StringAlignment.Far;
+                    g.DrawString(Util.FormatClock(_status.TotalRemainingSeconds), Theme.Body, b,
+                        new RectangleF(Width - ValueWidth - 8, y + 3, ValueWidth, RowHeight), sf);
+                }
+            }
+        }
+
+        void DrawRow(Graphics g, StatusApp app, int y)
+        {
+            double ratio = app.LimitSeconds > 0
+                ? (double)app.RemainingSeconds / app.LimitSeconds : 0;
+            Color accent = Theme.ForRatio(ratio, app.Blocked);
+
+            using (SolidBrush dot = new SolidBrush(accent))
+                g.FillEllipse(dot, 8, y + 7, 7, 7);
+
+            string name = app.Name;
+            if (name.Length > 15) name = name.Substring(0, 14) + "…";
+
+            using (SolidBrush b = new SolidBrush(app.Running ? Theme.Text : Theme.TextDim))
+                g.DrawString(name, app.Running ? Theme.BodyBold : Theme.Body, b, 20, y + 2);
+
+            string value = app.Blocked ? "habis" : Util.FormatClock(app.RemainingSeconds);
+            using (SolidBrush b = new SolidBrush(accent))
+            using (StringFormat sf = new StringFormat())
+            {
+                sf.Alignment = StringAlignment.Far;
+                g.DrawString(value, Theme.BodyBold, b,
+                    new RectangleF(Width - ValueWidth - 8, y + 2, ValueWidth, RowHeight), sf);
+            }
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            _timer.Stop();
+            _timer.Dispose();
+            base.OnFormClosed(e);
+        }
+    }
+
     /// <summary>Ikon tray + pengawas notifikasi, berjalan di sesi pengguna.</summary>
     public class TrayApp : ApplicationContext
     {
@@ -271,6 +602,9 @@ namespace ScreenTimeGuard
 
         ChildForm _childForm;
         ParentForm _parentForm;
+        OverlayForm _overlay;
+        OverlayPrefs _overlayPrefs;
+        ToolStripMenuItem _overlayItem;
 
         // Ambang peringatan yang sudah ditampilkan hari ini: "proses|menit".
         readonly HashSet<string> _warned = new HashSet<string>();
@@ -284,8 +618,14 @@ namespace ScreenTimeGuard
 
         public TrayApp()
         {
+            _overlayPrefs = OverlayPrefs.Load();
+
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.Add("Sisa waktu hari ini", null, delegate { ShowChild(); });
+            _overlayItem = new ToolStripMenuItem("Penghitung di layar", null,
+                delegate { ToggleOverlay(); });
+            _overlayItem.CheckOnClick = false;
+            menu.Items.Add(_overlayItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Panel orang tua...", null, delegate { ShowParent(); });
             menu.Items.Add(new ToolStripSeparator());
@@ -319,6 +659,57 @@ namespace ScreenTimeGuard
             }
             _childForm.WindowState = FormWindowState.Normal;
             _childForm.Activate();
+        }
+
+        /// <summary>
+        /// Menyalakan/mematikan penghitung melayang sesuai pengaturan orang tua
+        /// dan pilihan anak. Orang tua bisa mengunci supaya tidak bisa disembunyikan.
+        /// </summary>
+        void SyncOverlay(Status status)
+        {
+            bool allowed = status == null || status.OverlayEnabled;
+            bool locked = status != null && status.OverlayLocked;
+            bool wanted = allowed && (locked || !_overlayPrefs.Hidden);
+
+            if (_overlayItem != null)
+            {
+                _overlayItem.Checked = wanted;
+                _overlayItem.Enabled = allowed && !locked;
+                _overlayItem.ToolTipText = locked
+                    ? "Dikunci oleh orang tua" : (allowed ? "" : "Dimatikan oleh orang tua");
+            }
+
+            if (wanted)
+            {
+                if (_overlay == null || _overlay.IsDisposed)
+                {
+                    _overlay = new OverlayForm(_overlayPrefs);
+                    _overlay.OpenRequested += delegate { ShowChild(); };
+                    _overlay.HideRequested += delegate { CloseOverlay(); };
+                    _overlay.FormClosed += delegate { _overlay = null; };
+                    _overlay.Show();
+                }
+            }
+            else
+            {
+                CloseOverlay();
+            }
+        }
+
+        void CloseOverlay()
+        {
+            if (_overlay == null || _overlay.IsDisposed) { _overlay = null; return; }
+            OverlayForm o = _overlay;
+            _overlay = null;
+            try { o.Close(); }
+            catch { }
+        }
+
+        void ToggleOverlay()
+        {
+            _overlayPrefs.Hidden = !_overlayPrefs.Hidden;
+            _overlayPrefs.Save();
+            SyncOverlay(StatusReader.Read());
         }
 
         void ShowParent()
@@ -371,6 +762,8 @@ namespace ScreenTimeGuard
         void Poll()
         {
             Status s = StatusReader.Read();
+            SyncOverlay(s);
+
             if (!StatusReader.IsFresh(s))
             {
                 // Saat pembaruan dipasang atau komputer baru menyala, agent memang
@@ -494,6 +887,7 @@ namespace ScreenTimeGuard
             {
                 _poll.Dispose();
                 _foreground.Dispose();
+                CloseOverlay();
                 _icon.Visible = false;
                 _icon.Dispose();
             }

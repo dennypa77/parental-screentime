@@ -255,6 +255,8 @@ namespace ScreenTimeGuard
                     status.WarnMinutes = _settings.WarnMinutes;
                     status.AgentVersion = AppInfo.Version;
                     status.UpdateAvailableVersion = _updateAvailableVersion;
+                    status.OverlayEnabled = _settings.OverlayEnabled;
+                    status.OverlayLocked = _settings.OverlayLocked;
 
                     for (int i = 0; i < _settings.Apps.Count; i++)
                         status.Apps.Add(EnforceApp(_settings.Apps[i], running, now, weekend,
