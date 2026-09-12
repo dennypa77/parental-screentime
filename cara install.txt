@@ -1,0 +1,4 @@
+Cara pasang di komputer anak
+
+powershell -ExecutionPolicy Bypass -File build.ps1
+powershell -ExecutionPolicy Bypass -File install.ps1   # minta elevasi sendiri

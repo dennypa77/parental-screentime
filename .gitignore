@@ -1,0 +1,12 @@
+# Hasil build (dibuat ulang oleh build.ps1)
+bin/
+
+# Kunci privat penandatangan rilis - JANGAN PERNAH di-commit
+release/signing-key.xml
+release/*private*.xml
+
+# Berkas sementara
+*.tmp
+*.part
+*.user
+.vs/
