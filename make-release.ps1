@@ -70,9 +70,18 @@ Copy-Item $builtExe $targetPath -Force
 $sha  = (Get-FileHash $targetPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $size = (Get-Item $targetPath).Length
 
-# Hanya versi terbaru yang perlu disimpan di repo; yang lama hanya menambah berat.
+# Simpan dua rilis terakhir, bukan hanya yang terbaru.
+# CDN GitHub menyimpan cache latest.json sekitar 5 menit, jadi selama itu masih ada
+# komputer yang membaca manifest versi sebelumnya; kalau berkasnya sudah dihapus,
+# unduhannya gagal 404. Menyimpan versi N-1 membuat masa transisi itu tetap mulus.
+$keep = 2
 Get-ChildItem $releaseDir -Filter 'ScreenTimeGuard-*.exe' |
-    Where-Object { $_.Name -ne $targetName } |
+    Sort-Object -Property @{ Expression = {
+        $v = $_.BaseName -replace '^ScreenTimeGuard-', ''
+        $parsed = [version]'0.0.0'
+        if ([version]::TryParse($v, [ref]$parsed)) { $parsed } else { [version]'0.0.0' }
+    }} -Descending |
+    Select-Object -Skip $keep |
     ForEach-Object {
         Write-Host "  membuang rilis lama: $($_.Name)" -ForegroundColor DarkGray
         Remove-Item $_.FullName -Force
