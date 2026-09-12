@@ -105,7 +105,11 @@ $manifest = [ordered]@{
 }
 
 $manifestPath = Join-Path $releaseDir 'latest.json'
-($manifest | ConvertTo-Json -Depth 4) | Out-File $manifestPath -Encoding utf8
+# UTF-8 tanpa BOM: BOM membuat sebagian parser JSON gagal membaca berkas.
+[System.IO.File]::WriteAllText(
+    $manifestPath,
+    ($manifest | ConvertTo-Json -Depth 4),
+    (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Host ""
 Write-Host "Rilis $version siap." -ForegroundColor Green

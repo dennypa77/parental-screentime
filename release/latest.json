@@ -1,8 +1,8 @@
-﻿{
-    "version":  "1.0.0",
-    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.0.0.exe",
-    "sha256":  "ac7c531288c957d3b471cffeae39f7eaaf64f1219f8155460463aac6e76d25dc",
+{
+    "version":  "1.0.1",
+    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.0.1.exe",
+    "sha256":  "fdeb73766c9738c948c699fbd9f882535d2f79245636005bbaf43e356836c971",
     "size":  94208,
-    "notes":  "Rilis pertama. Pembatasan waktu per aplikasi, reset harian, jam tidur, bonus waktu, dan pembaruan otomatis.",
+    "notes":  "Perbaikan pembacaan manifest pembaruan yang berawalan BOM UTF-8.",
     "signature":  ""
 }

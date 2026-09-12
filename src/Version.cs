@@ -7,7 +7,7 @@ namespace ScreenTimeGuard
     /// </summary>
     public static class AppInfo
     {
-        public const string Version = "1.0.0";
+        public const string Version = "1.0.1";
 
         public const string Name = "Screen Time Guard";
 

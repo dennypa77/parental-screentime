@@ -145,7 +145,10 @@ namespace ScreenTimeGuard
         {
             if (string.IsNullOrEmpty(url)) url = AppInfo.DefaultUpdateUrl;
             byte[] raw = DownloadBytes(url, MaxManifestBytes);
-            UpdateManifest m = Json.Read<UpdateManifest>(Encoding.UTF8.GetString(raw));
+            // Editor di Windows sering menambahkan BOM UTF-8 di awal berkas;
+            // parser JSON menolaknya, jadi dibuang dulu.
+            string text = Encoding.UTF8.GetString(raw).TrimStart('﻿', '​').Trim();
+            UpdateManifest m = Json.Read<UpdateManifest>(text);
             if (m == null || string.IsNullOrEmpty(m.Version) || string.IsNullOrEmpty(m.Url)
                 || string.IsNullOrEmpty(m.Sha256))
                 throw new InvalidOperationException("Manifest pembaruan tidak lengkap.");
