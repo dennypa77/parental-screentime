@@ -633,7 +633,9 @@ namespace ScreenTimeGuard
         {
             Label l = new Label();
             l.Text = text;
-            l.SetBounds(x, y + 4, 195, 20);
+            l.AutoSize = true;            // jangan dipatok, supaya tidak terpotong saat font besar
+            l.MaximumSize = new Size(195, 0);
+            l.Location = new Point(x, y + 4);
             return l;
         }
 
