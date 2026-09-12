@@ -1,8 +1,8 @@
 {
-    "version":  "1.1.1",
-    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.1.1.exe",
-    "sha256":  "8b42117b8736512d5447bf61ef3a76e79b02136fd39ae742d14a86a6f577447a",
-    "size":  105472,
-    "notes":  "Perbaiki label \u0027Tenggang sebelum ditutup\u0027 yang terpotong pada penskalaan layar 150%.",
+    "version":  "1.2.0",
+    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.2.0.exe",
+    "sha256":  "45ee82a38189db2af92486dbe470052d67ee659eb609ec291a95edc8df1a321e",
+    "size":  115712,
+    "notes":  "Batas pemakaian komputer menyeluruh: hitung SEMUA kegiatan anak, lalu kunci layar saat jatahnya habis. Termasuk deteksi diam, bonus waktu komputer, dan tenggang setelah buka kunci.",
     "signature":  ""
 }

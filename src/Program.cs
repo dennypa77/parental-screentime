@@ -15,7 +15,8 @@ namespace ScreenTimeGuard
             for (int i = 0; i < args.Length; i++)
             {
                 string a = args[i].TrimStart('-', '/').ToLowerInvariant();
-                if (a == "agent" || a == "ui" || a == "setup" || a == "apply-update") mode = a;
+                if (a == "agent" || a == "ui" || a == "setup" || a == "apply-update"
+                    || a == "simulate") mode = a;
             }
 
             AppDomain.CurrentDomain.UnhandledException += delegate (object s, UnhandledExceptionEventArgs e)
@@ -30,6 +31,7 @@ namespace ScreenTimeGuard
                     case "agent": return RunAgent();
                     case "setup": return RunSetup();
                     case "apply-update": return RunApplyUpdate(args);
+                    case "simulate": return RunSimulation(args);
                     default: return RunUi();
                 }
             }
@@ -76,6 +78,38 @@ namespace ScreenTimeGuard
                     Log.Write("UI error: " + e.Exception);
                 };
                 Application.Run(new TrayApp());
+                return 0;
+            }
+        }
+
+        // ------------------------------------------------------------ simulasi
+
+        /// <summary>
+        /// --simulate &lt;folder&gt; : menjalankan seluruh logika agent memakai folder data
+        /// terpisah, TANPA menutup aplikasi dan TANPA mengunci layar. Dipakai untuk
+        /// menguji aturan tanpa mengganggu pemasangan yang sedang berjalan.
+        /// </summary>
+        static int RunSimulation(string[] args)
+        {
+            string dir = null;
+            bool next = false;
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i].TrimStart('-', '/').ToLowerInvariant() == "simulate") { next = true; continue; }
+                if (next) { dir = args[i].Trim('"'); break; }
+            }
+            if (string.IsNullOrEmpty(dir))
+            {
+                Log.Write("--simulate butuh folder tujuan.");
+                return 2;
+            }
+
+            Paths.RedirectForSimulation(dir);
+            bool created;
+            using (Mutex mutex = new Mutex(true, @"Local\ScreenTimeGuard.Simulasi", out created))
+            {
+                if (!created) return 0;
+                new Agent(true).Run();
                 return 0;
             }
         }

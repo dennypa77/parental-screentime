@@ -24,7 +24,10 @@ ada di setiap Windows 10/11.
   jadi tidak bisa diakali dengan membuka ulang aplikasi.
 - **Bonus waktu** — orang tua bisa menambah (atau mengurangi) menit untuk hari ini saja,
   misalnya hadiah karena PR selesai. Tidak mengubah aturan permanen.
-- **Batas total waktu layar** — selain batas per aplikasi, ada pagu total semua aplikasi.
+- **Batas pemakaian komputer** — pagu untuk SELURUH kegiatan, apa pun yang dibuka anak.
+  Misalnya 30 menit sehari: setelah habis, layar dikunci. Lihat bagian
+  [Batas pemakaian komputer](#batas-pemakaian-komputer-semua-kegiatan).
+- **Batas total per kelompok aplikasi** — pagu gabungan untuk aplikasi yang diawasi saja.
 - **Jam tidur** — blokir semua aplikasi yang diawasi pada rentang jam tertentu (mis. 21:00–06:00).
 - **Jeda pengawasan** — matikan sementara semua aturan (mis. 30 menit) untuk acara keluarga.
 - **Riwayat harian** — `history.csv` mencatat pemakaian tiap hari, bisa dibuka di Excel.
@@ -111,6 +114,37 @@ hitungan mundur tiap aplikasi, jadi sisa waktu terus terlihat tanpa membuka apa 
 
 Diatur di Panel orang tua → **Aturan umum** → *Penghitung melayang*. Kalau **"Anak tidak boleh
 menyembunyikannya"** dicentang, pilihan sembunyikan di menu tray dimatikan.
+
+### Batas pemakaian komputer (semua kegiatan)
+
+Berbeda dengan batas per aplikasi, yang ini menghitung **seluruh waktu anak memakai
+komputer** — apa pun yang dibuka, termasuk aplikasi yang tidak ada di daftar. Saat jatahnya
+habis, layar dikunci.
+
+Diatur di Panel orang tua → **Aturan umum** → *Batas pemakaian komputer (SEMUA kegiatan)*:
+
+| Pengaturan | Arti |
+|---|---|
+| Hari sekolah / Akhir pekan | jatah menit per hari |
+| Berhenti menghitung setelah diam | jatah tidak terpakai saat anak meninggalkan meja (bawaan 5 menit; isi 0 kalau ingin tetap dihitung) |
+| Saat waktu habis | **Kunci layar** (aplikasi tetap terbuka, tinggal masuk lagi) atau **Keluar dari akun** (semua aplikasi ditutup) |
+| Tenggang setelah buka kunci | jeda singkat sesudah layar dibuka lagi, supaya Anda sempat menambah waktu |
+
+Cara kerjanya berlapis, sama seperti penutupan aplikasi:
+
+1. Anak diberi peringatan pada sisa 15 / 5 / 1 menit.
+2. Saat habis, proses tray mengunci layar.
+3. Kalau proses tray sengaja dimatikan anak, **agent SYSTEM memutus sesi konsol sendiri**
+   dalam 20 detik. Jadi mematikan ikon tray tidak menyelamatkan waktunya.
+
+Kalau anak masuk lagi setelah terkunci, dia mendapat tenggang singkat lalu layar dikunci
+lagi. Tenggang itu diberikan paling sering **sekali per 5 menit**, jadi menyalakan ulang
+komputer berkali-kali tidak menambah waktu. Untuk memberi waktu tambahan sungguhan, pakai
+tombol **+15 / +30 menit komputer** di tab *Hari ini*, atau **Jeda pengawasan**.
+
+> Catatan: jam komputer tetap berjalan walaupun ikon tray dimatikan. Kalau laporan
+> aktivitas dari tray hilang, agent menganggap anak sedang aktif — sengaja begitu, supaya
+> mematikan tray tidak menjadi celah.
 
 ### Arti angka jatah
 
@@ -292,6 +326,11 @@ Menjalankan manual untuk uji coba:
 ScreenTimeGuard.exe --agent    # pengawas (tanpa jendela)
 ScreenTimeGuard.exe --ui       # ikon tray
 ScreenTimeGuard.exe --setup    # atur password (perlu Administrator)
+
+# Menguji aturan tanpa mengganggu pemasangan yang sedang berjalan:
+# seluruh logika berjalan di folder terpisah, tetapi TIDAK menutup aplikasi
+# dan TIDAK mengunci layar.
+ScreenTimeGuard.exe --simulate C:\coba-screentime
 ```
 
 ---

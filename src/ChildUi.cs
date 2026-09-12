@@ -183,7 +183,7 @@ namespace ScreenTimeGuard
             _sub.ForeColor = Theme.TextDim;
             _sub.AutoSize = false;
             _sub.Dock = DockStyle.Top;
-            _sub.Height = 44;
+            _sub.Height = 76;
             _sub.Padding = new Padding(16, 2, 14, 0);
 
             _list.Dock = DockStyle.Fill;
@@ -242,8 +242,12 @@ namespace ScreenTimeGuard
             StringBuilder sb = new StringBuilder();
             sb.Append(s.IsWeekend ? "Akhir pekan" : "Hari sekolah");
             sb.Append("  •  jatah direset tiap pukul ").Append(s.ResetsAtText);
+            if (s.SessionEnabled && s.SessionRemainingSeconds >= 0)
+                sb.Append("\nPemakaian komputer (semua kegiatan): sisa ")
+                  .Append(Util.FormatDuration(s.SessionRemainingSeconds))
+                  .Append(" dari ").Append(Util.FormatDuration(s.SessionLimitSeconds));
             if (s.TotalLimitSeconds >= 0)
-                sb.Append("\nTotal waktu layar: sisa ")
+                sb.Append("\nTotal aplikasi yang diawasi: sisa ")
                   .Append(Util.FormatDuration(s.TotalRemainingSeconds))
                   .Append(" dari ").Append(Util.FormatDuration(s.TotalLimitSeconds));
             if (s.Bedtime) sb.Append("\nSekarang jam tidur (").Append(s.BedtimeText).Append(")");
@@ -497,8 +501,13 @@ namespace ScreenTimeGuard
             }
 
             int bodyRows = Math.Max(1, _rows.Count);
-            bool showTotal = !_prefs.Collapsed && _status != null && _status.TotalLimitSeconds >= 0;
-            int desired = HeaderHeight + bodyRows * RowHeight + (showTotal ? RowHeight : 0) + 8;
+            int summaryRows = 0;
+            if (!_prefs.Collapsed && _status != null)
+            {
+                if (ShowsSession(_status)) summaryRows++;
+                if (_status.TotalLimitSeconds >= 0) summaryRows++;
+            }
+            int desired = HeaderHeight + bodyRows * RowHeight + summaryRows * RowHeight + 8;
             if (Height != desired) Height = desired;
 
             // Aplikasi layar penuh kadang merebut posisi teratas; tegakkan berkala.
@@ -543,20 +552,34 @@ namespace ScreenTimeGuard
                 y += RowHeight;
             }
 
-            if (!_prefs.Collapsed && _status != null && _status.TotalLimitSeconds >= 0)
+            if (_prefs.Collapsed || _status == null) return;
+
+            if (ShowsSession(_status))
             {
-                using (Pen sep = new Pen(Color.FromArgb(70, 76, 90)))
-                    g.DrawLine(sep, 8, y + 1, Width - 8, y + 1);
-                bool empty = _status.TotalRemainingSeconds <= 0;
-                using (SolidBrush b = new SolidBrush(Theme.TextDim))
-                    g.DrawString("Total", Theme.Body, b, 8, y + 3);
-                using (SolidBrush b = new SolidBrush(empty ? Theme.Bad : Theme.TextDim))
-                using (StringFormat sf = new StringFormat())
-                {
-                    sf.Alignment = StringAlignment.Far;
-                    g.DrawString(Util.FormatClock(_status.TotalRemainingSeconds), Theme.Body, b,
-                        new RectangleF(Width - ValueWidth - 8, y + 3, ValueWidth, RowHeight), sf);
-                }
+                DrawSummary(g, y, "Komputer", _status.SessionRemainingSeconds);
+                y += RowHeight;
+            }
+            if (_status.TotalLimitSeconds >= 0)
+                DrawSummary(g, y, "Total aplikasi", _status.TotalRemainingSeconds);
+        }
+
+        static bool ShowsSession(Status s)
+        {
+            return s.SessionEnabled && s.SessionRemainingSeconds >= 0;
+        }
+
+        void DrawSummary(Graphics g, int y, string label, int remaining)
+        {
+            using (Pen sep = new Pen(Color.FromArgb(70, 76, 90)))
+                g.DrawLine(sep, 8, y + 1, Width - 8, y + 1);
+            using (SolidBrush b = new SolidBrush(Theme.TextDim))
+                g.DrawString(label, Theme.Body, b, 8, y + 3);
+            using (SolidBrush b = new SolidBrush(remaining <= 0 ? Theme.Bad : Theme.TextDim))
+            using (StringFormat sf = new StringFormat())
+            {
+                sf.Alignment = StringAlignment.Far;
+                g.DrawString(Util.FormatClock(remaining), Theme.Body, b,
+                    new RectangleF(Width - ValueWidth - 8, y + 3, ValueWidth, RowHeight), sf);
             }
         }
 
@@ -615,6 +638,9 @@ namespace ScreenTimeGuard
 
         const int StaleGraceSeconds = 90;
         DateTime _staleSince = DateTime.MinValue;
+
+        DateTime _lastLockAtUtc = DateTime.MinValue;
+        readonly HashSet<int> _sessionWarned = new HashSet<int>();
 
         public TrayApp()
         {
@@ -754,9 +780,10 @@ namespace ScreenTimeGuard
 
         void ReportForeground()
         {
+            // Laporan ini juga memberi tahu agent berapa lama tidak ada aktivitas,
+            // supaya jatah pemakaian komputer tidak habis saat anak meninggalkan meja.
             string name = Native.ForegroundProcessName();
-            if (name.Length == 0) return;
-            IpcClient.Send("FOREGROUND", "", name, "", "");
+            IpcClient.Send("FOREGROUND", "", name, Native.IdleSeconds().ToString(), "");
         }
 
         void Poll()
@@ -793,9 +820,11 @@ namespace ScreenTimeGuard
                 _warned.Clear();
                 _inGrace.Clear();
                 _closed.Clear();
+                _sessionWarned.Clear();
             }
 
             int[] thresholds = ParseWarn(s.WarnMinutes);
+            HandleSessionLimit(s, thresholds);
             string shortest = null;
             int shortestLeft = int.MaxValue;
 
@@ -850,12 +879,53 @@ namespace ScreenTimeGuard
                 }
             }
 
-            if (shortest != null)
+            if (s.SessionEnabled && s.SessionRemainingSeconds >= 0
+                && (shortest == null || s.SessionRemainingSeconds < shortestLeft))
+                _icon.Text = Trunc("Screen Time Guard\nKomputer: sisa "
+                                   + Util.FormatClock(s.SessionRemainingSeconds));
+            else if (shortest != null)
                 _icon.Text = Trunc("Screen Time Guard\n" + shortest + ": sisa "
                                    + Util.FormatClock(shortestLeft));
             else if (s.Paused) _icon.Text = "Screen Time Guard - dijeda";
             else if (s.Bedtime) _icon.Text = "Screen Time Guard - jam tidur";
             else _icon.Text = "Screen Time Guard - aktif";
+        }
+
+        /// <summary>
+        /// Peringatan dan penguncian layar untuk batas pemakaian komputer menyeluruh.
+        /// </summary>
+        void HandleSessionLimit(Status s, int[] thresholds)
+        {
+            if (!s.SessionEnabled) return;
+
+            if (s.SessionLockRequested)
+            {
+                // Agent akan memutus sesi sendiri kalau proses ini tidak melakukannya,
+                // jadi cukup sekali per beberapa detik supaya tidak berulang-ulang.
+                if ((DateTime.UtcNow - _lastLockAtUtc).TotalSeconds < 10) return;
+                _lastLockAtUtc = DateTime.UtcNow;
+
+                Toast.Show("Waktu komputer habis",
+                    "Jatah pemakaian komputer hari ini sudah habis. Layar akan dikunci sekarang.",
+                    Theme.Bad, 6);
+                Application.DoEvents();
+                Native.LockScreen();
+                return;
+            }
+
+            if (s.SessionRemainingSeconds < 0) return;
+
+            for (int i = 0; i < thresholds.Length; i++)
+            {
+                int thresholdSec = thresholds[i] * 60;
+                if (s.SessionRemainingSeconds > thresholdSec) continue;
+                if (_sessionWarned.Contains(thresholds[i])) continue;
+                for (int u = 0; u <= i; u++) _sessionWarned.Add(thresholds[u]);
+                Toast.Show("Sisa waktu komputer",
+                    "Tinggal " + Util.FormatDuration(s.SessionRemainingSeconds)
+                    + " untuk semua kegiatan. Setelah habis layar akan dikunci.", Theme.Warn, 9);
+                break;
+            }
         }
 
         static string Trunc(string s)

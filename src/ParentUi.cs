@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -387,6 +387,9 @@ namespace ScreenTimeGuard
         NumericUpDown _resetHour, _grace, _totalWeekday, _totalWeekend, _pauseMinutes;
         CheckBox _totalWeekdayOff, _totalWeekendOff, _bedtimeEnabled, _autoCheck;
         CheckBox _overlayEnabled, _overlayLocked;
+        CheckBox _sessionEnabled, _sessionWeekdayOff, _sessionWeekendOff;
+        NumericUpDown _sessionWeekday, _sessionWeekend, _sessionIdle, _sessionRelock;
+        ComboBox _sessionAction;
         TextBox _warnMinutes, _bedtimeStart, _bedtimeEnd, _updateNotes, _updateUrl, _updateKey;
         Label _todaySummary, _versionLabel, _updateStatus;
         Button _checkButton, _installButton;
@@ -563,7 +566,56 @@ namespace ScreenTimeGuard
                                    260, y + 3));
             y += 38;
 
-            page.Controls.Add(Section("Batas total waktu layar (semua aplikasi)", 0, ref y));
+            page.Controls.Add(Section("Batas pemakaian komputer (SEMUA kegiatan)", 0, ref y));
+            _sessionEnabled = Check("Kunci layar kalau jatah pemakaian komputer habis", 0, y);
+            _sessionEnabled.Width = 460;
+            page.Controls.Add(_sessionEnabled);
+            y += 26;
+
+            page.Controls.Add(Hint("Menghitung seluruh waktu anak memakai komputer, apa pun yang "
+                                   + "dibuka - bukan hanya aplikasi di daftar.", 0, y));
+            y += 36;
+
+            page.Controls.Add(Field("Hari sekolah (menit)", 0, y));
+            _sessionWeekday = Num(200, y, 0, 1440, 60);
+            page.Controls.Add(_sessionWeekday);
+            _sessionWeekdayOff = Check("Tanpa batas", 270, y + 2);
+            _sessionWeekdayOff.CheckedChanged += delegate { _sessionWeekday.Enabled = !_sessionWeekdayOff.Checked; };
+            page.Controls.Add(_sessionWeekdayOff);
+            y += 32;
+
+            page.Controls.Add(Field("Akhir pekan (menit)", 0, y));
+            _sessionWeekend = Num(200, y, 0, 1440, 120);
+            page.Controls.Add(_sessionWeekend);
+            _sessionWeekendOff = Check("Tanpa batas", 270, y + 2);
+            _sessionWeekendOff.CheckedChanged += delegate { _sessionWeekend.Enabled = !_sessionWeekendOff.Checked; };
+            page.Controls.Add(_sessionWeekendOff);
+            y += 32;
+
+            page.Controls.Add(Field("Berhenti menghitung setelah diam (menit)", 0, y));
+            _sessionIdle = Num(200, y, 0, 120, 5);
+            page.Controls.Add(_sessionIdle);
+            page.Controls.Add(Hint("0 = tetap menghitung walaupun komputer ditinggal.", 270, y + 3));
+            y += 34;
+
+            page.Controls.Add(Field("Saat waktu habis", 0, y));
+            _sessionAction = new ComboBox();
+            _sessionAction.DropDownStyle = ComboBoxStyle.DropDownList;
+            _sessionAction.SetBounds(200, y, 240, 24);
+            _sessionAction.Items.Add("Kunci layar (aplikasi tetap terbuka)");
+            _sessionAction.Items.Add("Keluar dari akun (semua aplikasi ditutup)");
+            _sessionAction.SelectedIndex = 0;
+            page.Controls.Add(_sessionAction);
+            y += 32;
+
+            page.Controls.Add(Field("Tenggang setelah buka kunci (detik)", 0, y));
+            _sessionRelock = Num(200, y, 10, 600, 60);
+            page.Controls.Add(_sessionRelock);
+            page.Controls.Add(Hint("Jeda singkat setelah layar dibuka lagi, supaya Anda sempat "
+                                   + "menambah waktu. Paling sering 1x per 5 menit.", 270, y + 3));
+            y += 46;
+
+            page.Controls.Add(Section("Batas total untuk aplikasi yang diawasi saja", 0, ref y));
             page.Controls.Add(Field("Hari sekolah (menit)", 0, y));
             _totalWeekday = Num(200, y, 0, 1440, 120);
             page.Controls.Add(_totalWeekday);
@@ -690,6 +742,19 @@ namespace ScreenTimeGuard
                 ? 180 : Math.Min(1440, _settings.TotalWeekendMinutes);
             _totalWeekend.Enabled = !_totalWeekendOff.Checked;
 
+            _sessionEnabled.Checked = _settings.SessionEnabled;
+            _sessionWeekdayOff.Checked = _settings.SessionWeekdayMinutes < 0;
+            _sessionWeekday.Value = _settings.SessionWeekdayMinutes < 0
+                ? 60 : Math.Min(1440, _settings.SessionWeekdayMinutes);
+            _sessionWeekday.Enabled = !_sessionWeekdayOff.Checked;
+            _sessionWeekendOff.Checked = _settings.SessionWeekendMinutes < 0;
+            _sessionWeekend.Value = _settings.SessionWeekendMinutes < 0
+                ? 120 : Math.Min(1440, _settings.SessionWeekendMinutes);
+            _sessionWeekend.Enabled = !_sessionWeekendOff.Checked;
+            _sessionIdle.Value = Math.Max(0, Math.Min(120, _settings.SessionIdleMinutes));
+            _sessionAction.SelectedIndex = _settings.SessionAction == "logoff" ? 1 : 0;
+            _sessionRelock.Value = Math.Max(10, Math.Min(600, _settings.SessionRelockGraceSeconds));
+
             _overlayEnabled.Checked = _settings.OverlayEnabled;
             _overlayLocked.Checked = _settings.OverlayLocked;
             _overlayLocked.Enabled = _overlayEnabled.Checked;
@@ -712,6 +777,12 @@ namespace ScreenTimeGuard
             _settings.GraceSeconds = (int)_grace.Value;
             _settings.TotalWeekdayMinutes = _totalWeekdayOff.Checked ? -1 : (int)_totalWeekday.Value;
             _settings.TotalWeekendMinutes = _totalWeekendOff.Checked ? -1 : (int)_totalWeekend.Value;
+            _settings.SessionEnabled = _sessionEnabled.Checked;
+            _settings.SessionWeekdayMinutes = _sessionWeekdayOff.Checked ? -1 : (int)_sessionWeekday.Value;
+            _settings.SessionWeekendMinutes = _sessionWeekendOff.Checked ? -1 : (int)_sessionWeekend.Value;
+            _settings.SessionIdleMinutes = (int)_sessionIdle.Value;
+            _settings.SessionAction = _sessionAction.SelectedIndex == 1 ? "logoff" : "lock";
+            _settings.SessionRelockGraceSeconds = (int)_sessionRelock.Value;
             _settings.OverlayEnabled = _overlayEnabled.Checked;
             _settings.OverlayLocked = _overlayLocked.Checked;
             _settings.BedtimeEnabled = _bedtimeEnabled.Checked;
@@ -742,7 +813,7 @@ namespace ScreenTimeGuard
 
             _todaySummary = new Label();
             _todaySummary.Dock = DockStyle.Top;
-            _todaySummary.Height = 40;
+            _todaySummary.Height = 58;
             _todaySummary.ForeColor = SystemColors.GrayText;
 
             FlowLayoutPanel bonusBar = UiLayout.BottomBarLeft(
@@ -750,7 +821,9 @@ namespace ScreenTimeGuard
                 MakeButton("+30 menit", delegate { Bonus(30); }),
                 MakeButton("-15 menit", delegate { Bonus(-15); }),
                 MakeButton("Bonus lain...", delegate { BonusCustom(); }),
-                MakeButton("Reset pemakaian", delegate { ResetUsage(); }));
+                MakeButton("Reset pemakaian", delegate { ResetUsage(); }),
+                MakeButton("+15 mnt komputer", delegate { SessionBonus(15); }),
+                MakeButton("+30 mnt komputer", delegate { SessionBonus(30); }));
 
             Label pauseLbl = new Label();
             pauseLbl.Text = "Jeda seluruh pengawasan selama";
@@ -787,13 +860,21 @@ namespace ScreenTimeGuard
             }
 
             _todaySummary.Text = "Hari " + s.Day + " (" + (s.IsWeekend ? "akhir pekan" : "hari sekolah")
-                + ")  •  reset pukul " + s.ResetsAtText
+                + ")  â€¢  reset pukul " + s.ResetsAtText
                 + (s.TotalLimitSeconds >= 0
                     ? "\nTotal terpakai " + Util.FormatDuration(s.TotalUsedSeconds)
                       + " dari " + Util.FormatDuration(s.TotalLimitSeconds)
                     : "\nTotal terpakai " + Util.FormatDuration(s.TotalUsedSeconds) + " (tanpa batas total)")
-                + (s.Paused ? "  •  DIJEDA " + Util.FormatDuration(s.PauseLeftSeconds) + " lagi" : "")
-                + (s.Bedtime ? "  •  JAM TIDUR" : "");
+                + (s.SessionEnabled
+                    ? "\nPemakaian komputer: " + Util.FormatDuration(s.SessionUsedSeconds)
+                      + (s.SessionLimitSeconds >= 0
+                          ? " dari " + Util.FormatDuration(s.SessionLimitSeconds)
+                            + "  â€¢  sisa " + Util.FormatClock(s.SessionRemainingSeconds)
+                            + (s.SessionBonusMinutes != 0 ? "  (bonus " + s.SessionBonusMinutes + " mnt)" : "")
+                          : " (tanpa batas)")
+                    : "")
+                + (s.Paused ? "  â€¢  DIJEDA " + Util.FormatDuration(s.PauseLeftSeconds) + " lagi" : "")
+                + (s.Bedtime ? "  â€¢  JAM TIDUR" : "");
 
             string selected = _today.SelectedItems.Count > 0
                 ? (string)_today.SelectedItems[0].Tag : null;
@@ -806,7 +887,7 @@ namespace ScreenTimeGuard
                 ListViewItem it = new ListViewItem(a.Name);
                 it.SubItems.Add(Util.FormatDuration(a.UsedSeconds));
                 it.SubItems.Add(a.LimitSeconds < 0 ? "tanpa batas" : Util.FormatDuration(a.LimitSeconds));
-                it.SubItems.Add(a.RemainingSeconds < 0 ? "∞" : Util.FormatClock(a.RemainingSeconds));
+                it.SubItems.Add(a.RemainingSeconds < 0 ? "âˆž" : Util.FormatClock(a.RemainingSeconds));
                 it.SubItems.Add(a.BonusMinutes == 0 ? "-" : a.BonusMinutes + " mnt");
                 it.SubItems.Add(a.Blocked ? a.BlockReason : (a.Running ? "sedang berjalan" : "-"));
                 it.Tag = a.Process;
@@ -826,6 +907,12 @@ namespace ScreenTimeGuard
                 return null;
             }
             return (string)_today.SelectedItems[0].Tag;
+        }
+
+        void SessionBonus(int minutes)
+        {
+            Call("BONUS", "SESSION", minutes.ToString(), "");
+            RefreshToday();
         }
 
         void Bonus(int minutes)
@@ -921,11 +1008,11 @@ namespace ScreenTimeGuard
 
             Label info = new Label();
             info.Text = "Catatan keamanan:\n"
-                + "• Agar anak tidak bisa mematikan pengawas, pastikan akun Windows anak adalah "
+                + "â€¢ Agar anak tidak bisa mematikan pengawas, pastikan akun Windows anak adalah "
                 + "akun Standard (bukan Administrator).\n"
-                + "• Semua perubahan pengaturan, penutupan aplikasi, dan percobaan password salah "
+                + "â€¢ Semua perubahan pengaturan, penutupan aplikasi, dan percobaan password salah "
                 + "dicatat di log.txt.\n"
-                + "• Jika password hilang, hapus baris PasswordHash/PasswordSalt di settings.json "
+                + "â€¢ Jika password hilang, hapus baris PasswordHash/PasswordSalt di settings.json "
                 + "sebagai Administrator, lalu jalankan ulang install.ps1.";
             info.SetBounds(0, 190, 700, 140);
             info.ForeColor = SystemColors.GrayText;
@@ -1079,7 +1166,7 @@ namespace ScreenTimeGuard
             if (s != null && !string.IsNullOrEmpty(s.UpdateAvailableVersion))
             {
                 _versionLabel.Text = "Versi terpasang: " + running
-                    + "   •   versi baru tersedia: " + s.UpdateAvailableVersion;
+                    + "   â€¢   versi baru tersedia: " + s.UpdateAvailableVersion;
                 _versionLabel.ForeColor = Color.DarkGreen;
             }
             else
@@ -1234,3 +1321,4 @@ namespace ScreenTimeGuard
         }
     }
 }
+

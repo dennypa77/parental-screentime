@@ -22,7 +22,12 @@ namespace ScreenTimeGuard
         [DataMember(Order = 6)] public bool Enabled;
         [DataMember(Order = 7)] public bool CountsTowardTotal;
 
-        public AppLimit()
+        public AppLimit() { SetDefaults(); }
+
+        [OnDeserializing]
+        void OnDeserializing(StreamingContext context) { SetDefaults(); }
+
+        void SetDefaults()
         {
             Name = "";
             Process = "";
@@ -58,9 +63,29 @@ namespace ScreenTimeGuard
         [DataMember(Order = 14)] public string UpdatePublicKey;   // opsional: kunci publik RSA (base64 XML)
         [DataMember(Order = 15)] public bool OverlayEnabled;      // penghitung melayang di layar anak
         [DataMember(Order = 16)] public bool OverlayLocked;       // anak tidak boleh menyembunyikannya
-        [DataMember(Order = 20)] public List<AppLimit> Apps;
 
-        public Settings()
+        // Batas pemakaian komputer secara menyeluruh: menghitung SEMUA kegiatan,
+        // bukan hanya aplikasi yang terdaftar. Saat habis, layar dikunci.
+        [DataMember(Order = 17)] public bool SessionEnabled;
+        [DataMember(Order = 18)] public int SessionWeekdayMinutes;    // -1 = tanpa batas
+        [DataMember(Order = 19)] public int SessionWeekendMinutes;
+        [DataMember(Order = 20)] public int SessionIdleMinutes;       // berhenti menghitung saat diam
+        [DataMember(Order = 21)] public string SessionAction;         // "lock" | "logoff"
+        [DataMember(Order = 22)] public int SessionRelockGraceSeconds;
+
+        [DataMember(Order = 50)] public List<AppLimit> Apps;
+
+        public Settings() { SetDefaults(); }
+
+        /// <summary>
+        /// DataContractJsonSerializer tidak memanggil konstruktor, jadi nilai bawaan
+        /// dipasang lewat kait ini. Tanpa ini, field yang belum ada di settings.json
+        /// versi lama akan terbaca 0 / null - misalnya jatah komputer jadi 0 menit.
+        /// </summary>
+        [OnDeserializing]
+        void OnDeserializing(StreamingContext context) { SetDefaults(); }
+
+        void SetDefaults()
         {
             Version = 1;
             PasswordHash = "";
@@ -78,6 +103,12 @@ namespace ScreenTimeGuard
             UpdatePublicKey = "";
             OverlayEnabled = true;
             OverlayLocked = false;
+            SessionEnabled = false;
+            SessionWeekdayMinutes = 60;
+            SessionWeekendMinutes = 120;
+            SessionIdleMinutes = 5;
+            SessionAction = "lock";
+            SessionRelockGraceSeconds = 60;
             Apps = new List<AppLimit>();
         }
 
@@ -117,6 +148,9 @@ namespace ScreenTimeGuard
         [DataMember(Order = 4)] public bool GraceUsed;
 
         public UsageEntry() { Process = ""; }
+
+        [OnDeserializing]
+        void OnDeserializing(StreamingContext context) { Process = ""; }
     }
 
     [DataContract]
@@ -127,12 +161,21 @@ namespace ScreenTimeGuard
         [DataMember(Order = 3)] public int TotalBonusMinutes;
         [DataMember(Order = 4)] public List<UsageEntry> Entries;
         [DataMember(Order = 5)] public string PausedUntilUtc;    // "" = tidak dijeda
+        [DataMember(Order = 6)] public int SessionSeconds;       // pemakaian komputer menyeluruh
+        [DataMember(Order = 7)] public int SessionBonusMinutes;
+        [DataMember(Order = 8)] public string SessionLastGraceUtc;  // kapan tenggang buka-kunci terakhir
 
-        public UsageDay()
+        public UsageDay() { SetDefaults(); }
+
+        [OnDeserializing]
+        void OnDeserializing(StreamingContext context) { SetDefaults(); }
+
+        void SetDefaults()
         {
             Day = "";
             Entries = new List<UsageEntry>();
             PausedUntilUtc = "";
+            SessionLastGraceUtc = "";
         }
 
         public UsageEntry Get(string process)
@@ -185,7 +228,14 @@ namespace ScreenTimeGuard
         [DataMember(Order = 15)] public string UpdateAvailableVersion;   // "" = tidak ada
         [DataMember(Order = 16)] public bool OverlayEnabled;
         [DataMember(Order = 17)] public bool OverlayLocked;
-        [DataMember(Order = 20)] public List<StatusApp> Apps;
+        [DataMember(Order = 18)] public bool SessionEnabled;
+        [DataMember(Order = 19)] public int SessionLimitSeconds;      // -1 = tanpa batas
+        [DataMember(Order = 20)] public int SessionUsedSeconds;
+        [DataMember(Order = 21)] public int SessionRemainingSeconds;  // -1 = tanpa batas
+        [DataMember(Order = 22)] public int SessionBonusMinutes;
+        [DataMember(Order = 23)] public bool SessionLockRequested;
+        [DataMember(Order = 24)] public string SessionActionText;
+        [DataMember(Order = 50)] public List<StatusApp> Apps;
 
         public Status()
         {
@@ -196,6 +246,7 @@ namespace ScreenTimeGuard
             WarnMinutes = "";
             AgentVersion = "";
             UpdateAvailableVersion = "";
+            SessionActionText = "";
             Apps = new List<StatusApp>();
         }
     }
@@ -288,8 +339,21 @@ namespace ScreenTimeGuard
 
     public static class Paths
     {
-        public static readonly string Dir = Path.Combine(
+        static string _dir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ScreenTimeGuard");
+        static string _pipeName = "ScreenTimeGuard.Control";
+
+        public static string Dir { get { return _dir; } }
+
+        /// <summary>
+        /// Hanya dipakai mode simulasi (--simulate) untuk menguji logika di folder
+        /// terpisah, supaya pemasangan yang sedang berjalan tidak terganggu.
+        /// </summary>
+        public static void RedirectForSimulation(string dir)
+        {
+            _dir = dir;
+            _pipeName = "ScreenTimeGuard.Simulasi";
+        }
 
         public static string Settings { get { return Path.Combine(Dir, "settings.json"); } }
         public static string Usage { get { return Path.Combine(Dir, "usage.json"); } }
@@ -297,7 +361,7 @@ namespace ScreenTimeGuard
         public static string History { get { return Path.Combine(Dir, "history.csv"); } }
         public static string LogFile { get { return Path.Combine(Dir, "log.txt"); } }
 
-        public const string PipeName = "ScreenTimeGuard.Control";
+        public static string PipeName { get { return _pipeName; } }
 
         public static void EnsureDir()
         {

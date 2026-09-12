@@ -7,7 +7,7 @@
     /// </summary>
     public static class AppInfo
     {
-        public const string Version = "1.1.1";
+        public const string Version = "1.2.0";
 
         public const string Name = "Screen Time Guard";
 

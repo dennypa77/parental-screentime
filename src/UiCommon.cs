@@ -133,6 +133,94 @@ namespace ScreenTimeGuard
             catch { }
         }
 
+        // ------------------------------------------------- kunci / keluar sesi
+
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool LockWorkStation();
+
+        [DllImport("user32.dll")]
+        static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
+
+        [DllImport("kernel32.dll")]
+        static extern uint GetTickCount();
+
+        [DllImport("wtsapi32.dll", SetLastError = true)]
+        static extern bool WTSDisconnectSession(IntPtr hServer, int sessionId, bool wait);
+
+        [DllImport("wtsapi32.dll", SetLastError = true)]
+        static extern bool WTSLogoffSession(IntPtr hServer, int sessionId, bool wait);
+
+        [DllImport("kernel32.dll")]
+        static extern int WTSGetActiveConsoleSessionId();
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct LASTINPUTINFO
+        {
+            public uint cbSize;
+            public uint dwTime;
+        }
+
+        /// <summary>Mengunci layar. Hanya berlaku untuk sesi pemanggil, jadi
+        /// dipanggil dari proses UI yang berjalan di sesi anak.</summary>
+        public static bool LockScreen()
+        {
+            try { return LockWorkStation(); }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// Cadangan untuk agent (SYSTEM), yang tidak bisa memanggil LockWorkStation
+        /// untuk sesi lain. Memutus sesi konsol sehingga kembali ke layar masuk.
+        /// </summary>
+        public static bool DisconnectConsoleSession(bool logoff)
+        {
+            try
+            {
+                int session = WTSGetActiveConsoleSessionId();
+                if (session < 0) return false;
+                return logoff
+                    ? WTSLogoffSession(IntPtr.Zero, session, false)
+                    : WTSDisconnectSession(IntPtr.Zero, session, false);
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Berapa detik tidak ada gerakan mouse / ketikan di sesi ini.</summary>
+        public static int IdleSeconds()
+        {
+            try
+            {
+                LASTINPUTINFO info = new LASTINPUTINFO();
+                info.cbSize = (uint)Marshal.SizeOf(typeof(LASTINPUTINFO));
+                if (!GetLastInputInfo(ref info)) return 0;
+                uint ticks = GetTickCount();
+                if (ticks < info.dwTime) return 0;   // penghitung tick berputar
+                return (int)((ticks - info.dwTime) / 1000);
+            }
+            catch { return 0; }
+        }
+
+        /// <summary>
+        /// Layar terkunci ditandai adanya proses LogonUI. Dipakai agent untuk tahu
+        /// apakah perintah kuncinya sudah benar-benar terjadi.
+        /// </summary>
+        public static bool IsWorkstationLocked()
+        {
+            try
+            {
+                System.Diagnostics.Process[] p =
+                    System.Diagnostics.Process.GetProcessesByName("LogonUI");
+                bool locked = p.Length > 0;
+                for (int i = 0; i < p.Length; i++)
+                {
+                    try { p[i].Dispose(); }
+                    catch { }
+                }
+                return locked;
+            }
+            catch { return false; }
+        }
+
         public static string ForegroundProcessName()
         {
             try

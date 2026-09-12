@@ -33,6 +33,13 @@ namespace ScreenTimeGuard
 
         string _foregroundProcess = "";
         DateTime _foregroundAtUtc = DateTime.MinValue;
+        int _idleSeconds;
+
+        // Penguncian layar karena batas pemakaian komputer.
+        bool _sessionLockRequested;
+        DateTime _lockRequestedAtUtc = DateTime.MinValue;
+        DateTime _relockAllowedAtUtc = DateTime.MinValue;
+        bool _wasLocked;
 
         int _authFailures;
         DateTime _authLockoutUntilUtc = DateTime.MinValue;
@@ -45,6 +52,14 @@ namespace ScreenTimeGuard
         volatile bool _stop;
         volatile bool _stopForUpdate;
 
+        /// <summary>Mode uji: seluruh logika berjalan, tetapi tidak menutup aplikasi
+        /// dan tidak mengunci layar. Dipakai lewat --simulate.</summary>
+        readonly bool _simulate;
+
+        public Agent() : this(false) { }
+
+        public Agent(bool simulate) { _simulate = simulate; }
+
         // ------------------------------------------------------------- lifecycle
 
         public void Run()
@@ -54,7 +69,8 @@ namespace ScreenTimeGuard
             LoadUsage();
 
             Log.Write("=== Agent " + AppInfo.Version + " mulai (elevated=" + Util.IsElevated()
-                      + ", user=" + Environment.UserName + ") ===");
+                      + ", user=" + Environment.UserName
+                      + (_simulate ? ", MODE SIMULASI" : "") + ") ===");
 
             _server = new IpcServer(HandleRequest);
             _server.Start();
@@ -262,6 +278,8 @@ namespace ScreenTimeGuard
                         status.Apps.Add(EnforceApp(_settings.Apps[i], running, now, weekend,
                                                    paused, bedtime, totalExceeded));
 
+                    EnforceSession(status, elapsed, weekend, paused);
+
                     WriteStatus(status);
                 }
                 finally
@@ -390,8 +408,145 @@ namespace ScreenTimeGuard
             return s;
         }
 
+        // ------------------------------------------- batas pemakaian komputer
+
+        const int LockFallbackSeconds = 20;
+
+        /// <summary>
+        /// Menghitung waktu pemakaian komputer secara menyeluruh (semua kegiatan,
+        /// bukan hanya aplikasi terdaftar) dan mengunci layar saat jatahnya habis.
+        /// </summary>
+        void EnforceSession(Status status, int elapsed, bool weekend, bool paused)
+        {
+            status.SessionEnabled = _settings.SessionEnabled;
+            status.SessionBonusMinutes = _usage.SessionBonusMinutes;
+            status.SessionUsedSeconds = _usage.SessionSeconds;
+            status.SessionActionText = _settings.SessionAction == "logoff"
+                ? "keluar dari akun" : "mengunci layar";
+
+            int limitMinutes = weekend ? _settings.SessionWeekendMinutes : _settings.SessionWeekdayMinutes;
+            int limitSeconds = limitMinutes < 0
+                ? -1 : Math.Max(0, limitMinutes + _usage.SessionBonusMinutes) * 60;
+            status.SessionLimitSeconds = limitSeconds;
+            status.SessionRemainingSeconds = limitSeconds < 0
+                ? -1 : Math.Max(0, limitSeconds - _usage.SessionSeconds);
+
+            bool locked = Native.IsWorkstationLocked();
+
+            // Saat layar baru dibuka lagi, beri jeda singkat supaya orang tua sempat
+            // membuka panel untuk menambah waktu atau menjeda pengawasan.
+            if (_wasLocked && !locked) GrantRelockGrace();
+            _wasLocked = locked;
+
+            if (!_settings.SessionEnabled)
+            {
+                _sessionLockRequested = false;
+                status.SessionLockRequested = false;
+                return;
+            }
+
+            // Menghitung hanya saat anak benar-benar memakai komputer.
+            bool idleReportFresh = (DateTime.UtcNow - _foregroundAtUtc).TotalSeconds <= ForegroundFreshSeconds;
+            bool idle = idleReportFresh
+                        && _settings.SessionIdleMinutes > 0
+                        && _idleSeconds >= _settings.SessionIdleMinutes * 60;
+
+            if (!paused && !locked && !idle && elapsed > 0)
+            {
+                _usage.SessionSeconds += elapsed;
+                status.SessionUsedSeconds = _usage.SessionSeconds;
+                status.SessionRemainingSeconds = limitSeconds < 0
+                    ? -1 : Math.Max(0, limitSeconds - _usage.SessionSeconds);
+            }
+
+            bool exhausted = limitSeconds >= 0 && _usage.SessionSeconds >= limitSeconds;
+            if (paused || !exhausted)
+            {
+                if (_sessionLockRequested) Log.Write("Kunci layar dibatalkan (waktu bertambah / dijeda).");
+                _sessionLockRequested = false;
+                _lockRequestedAtUtc = DateTime.MinValue;
+                status.SessionLockRequested = false;
+                return;
+            }
+
+            if (locked)
+            {
+                // Sudah terkunci; tidak perlu apa-apa lagi.
+                status.SessionLockRequested = false;
+                _sessionLockRequested = false;
+                _lockRequestedAtUtc = DateTime.MinValue;
+                return;
+            }
+
+            if (DateTime.UtcNow < _relockAllowedAtUtc)
+            {
+                // Masih dalam masa tenggang setelah membuka kunci.
+                status.SessionLockRequested = false;
+                return;
+            }
+
+            if (!_sessionLockRequested)
+            {
+                _sessionLockRequested = true;
+                _lockRequestedAtUtc = DateTime.UtcNow;
+                Log.Write("Jatah pemakaian komputer habis (" + Util.FormatDuration(_usage.SessionSeconds)
+                          + "); meminta UI " + status.SessionActionText + ".");
+                SaveUsage();
+            }
+            status.SessionLockRequested = true;
+
+            // Kalau UI tidak melakukannya (mis. sengaja dimatikan anak), agent
+            // memutus sesi konsol sendiri.
+            if ((DateTime.UtcNow - _lockRequestedAtUtc).TotalSeconds >= LockFallbackSeconds)
+            {
+                if (_simulate)
+                {
+                    Log.Write("[simulasi] Agent akan memutus sesi konsol sekarang.");
+                    _lockRequestedAtUtc = DateTime.UtcNow;
+                    return;
+                }
+
+                bool logoff = _settings.SessionAction == "logoff";
+                bool ok = Native.DisconnectConsoleSession(logoff);
+                Log.Write("UI tidak merespons; agent " + (logoff ? "mengeluarkan akun" : "memutus sesi")
+                          + " secara langsung -> " + (ok ? "berhasil" : "gagal"));
+                _lockRequestedAtUtc = DateTime.UtcNow;   // coba lagi setelah jeda yang sama
+            }
+        }
+
+        /// <summary>
+        /// Memberi tenggang setelah layar dibuka kembali, tetapi paling sering
+        /// sekali per 5 menit supaya tidak bisa diakali dengan menyalakan ulang komputer.
+        /// </summary>
+        void GrantRelockGrace()
+        {
+            DateTime last;
+            if (!string.IsNullOrEmpty(_usage.SessionLastGraceUtc)
+                && DateTime.TryParse(_usage.SessionLastGraceUtc, CultureInfo.InvariantCulture,
+                       DateTimeStyles.RoundtripKind, out last)
+                && (DateTime.UtcNow - last.ToUniversalTime()).TotalMinutes < 5)
+            {
+                Log.Write("Layar dibuka lagi, tetapi tenggang belum boleh diberikan (batas 1x per 5 menit).");
+                return;
+            }
+
+            _relockAllowedAtUtc = DateTime.UtcNow.AddSeconds(_settings.SessionRelockGraceSeconds);
+            _usage.SessionLastGraceUtc = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
+            _sessionLockRequested = false;
+            _lockRequestedAtUtc = DateTime.MinValue;
+            SaveUsage();
+            Log.Write("Layar dibuka lagi; tenggang " + _settings.SessionRelockGraceSeconds
+                      + " detik sebelum dikunci ulang.");
+        }
+
         void CloseApp(List<Process> processes, string name, string reason, bool immediate)
         {
+            if (_simulate)
+            {
+                Log.Write("[simulasi] Akan menutup " + name + " - " + reason);
+                return;
+            }
+
             for (int i = 0; i < processes.Count; i++)
             {
                 Process proc = processes[i];
@@ -471,7 +626,7 @@ namespace ScreenTimeGuard
         /// </summary>
         void MaybeAutoCheckUpdate()
         {
-            if (!_settings.AutoCheckUpdate || _updateChecking) return;
+            if (_simulate || !_settings.AutoCheckUpdate || _updateChecking) return;
             if ((DateTime.UtcNow - _lastUpdateCheckUtc).TotalHours < 24) return;
 
             _lastUpdateCheckUtc = DateTime.UtcNow;
@@ -563,6 +718,8 @@ namespace ScreenTimeGuard
                 {
                     _foregroundProcess = Util.NormalizeProcessName(req.Arg1);
                     _foregroundAtUtc = DateTime.UtcNow;
+                    int idle;
+                    if (int.TryParse(req.Arg2, out idle) && idle >= 0) _idleSeconds = idle;
                 }
                 return Ok("");
             }
@@ -691,6 +848,14 @@ namespace ScreenTimeGuard
                 return Fail("Alamat pembaruan harus berupa URL https.");
             if (incoming.UpdatePublicKey == null) incoming.UpdatePublicKey = "";
 
+            if (incoming.SessionWeekdayMinutes < -1) incoming.SessionWeekdayMinutes = -1;
+            if (incoming.SessionWeekendMinutes < -1) incoming.SessionWeekendMinutes = -1;
+            if (incoming.SessionIdleMinutes < 0) incoming.SessionIdleMinutes = 0;
+            if (incoming.SessionIdleMinutes > 120) incoming.SessionIdleMinutes = 120;
+            if (incoming.SessionAction != "logoff") incoming.SessionAction = "lock";
+            if (incoming.SessionRelockGraceSeconds < 10) incoming.SessionRelockGraceSeconds = 10;
+            if (incoming.SessionRelockGraceSeconds > 600) incoming.SessionRelockGraceSeconds = 600;
+
             List<AppLimit> clean = new List<AppLimit>();
             for (int i = 0; i < incoming.Apps.Count; i++)
             {
@@ -734,6 +899,18 @@ namespace ScreenTimeGuard
                 _usage.TotalBonusMinutes += minutes;
                 Log.Write("Bonus total " + minutes + " menit.");
             }
+            else if (string.Equals(target, "SESSION", StringComparison.OrdinalIgnoreCase))
+            {
+                _usage.SessionBonusMinutes += minutes;
+                // Tambahan waktu berarti kunci layar tidak perlu langsung dipasang lagi.
+                if (minutes > 0)
+                {
+                    _sessionLockRequested = false;
+                    _lockRequestedAtUtc = DateTime.MinValue;
+                    _relockAllowedAtUtc = DateTime.MinValue;
+                }
+                Log.Write("Bonus pemakaian komputer " + minutes + " menit.");
+            }
             else
             {
                 string p = Util.NormalizeProcessName(target);
@@ -758,8 +935,11 @@ namespace ScreenTimeGuard
             {
                 _usage.Entries.Clear();
                 _usage.TotalSeconds = 0;
+                _usage.SessionSeconds = 0;
+                _sessionLockRequested = false;
+                _lockRequestedAtUtc = DateTime.MinValue;
                 _graceStart.Clear();
-                Log.Write("Pemakaian hari ini direset (semua aplikasi).");
+                Log.Write("Pemakaian hari ini direset (semua aplikasi + jam komputer).");
             }
             else
             {
