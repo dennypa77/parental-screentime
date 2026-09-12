@@ -32,6 +32,8 @@ ada di setiap Windows 10/11.
   salah tercatat di `log.txt`.
 - **Mode "hanya dicatat"** — aplikasi bisa dipantau tanpa dibatasi, berguna untuk melihat dulu
   kebiasaan anak sebelum menetapkan angka.
+- **Pembaruan sekali klik** — dari komputer anak, tanpa perlu membangun ulang atau menyalin file.
+  Lihat bagian [Pembaruan](#pembaruan).
 
 ---
 
@@ -101,6 +103,62 @@ habis, dia langsung lihat Minecraft Education masih tersisa berapa menit.
 
 ---
 
+## Pembaruan
+
+### Di komputer anak — tinggal klik
+
+Panel orang tua → tab **Pembaruan** → **Cek pembaruan** → **Pasang sekarang**.
+
+Itu saja. Pengawas mati beberapa detik lalu menyala lagi sendiri. Pengaturan, jatah hari ini,
+password, dan riwayat semuanya tetap utuh. Versi lama disimpan sebagai `ScreenTimeGuard.exe.bak`
+dan otomatis dikembalikan kalau pemasangan gagal di tengah jalan.
+
+Kalau **Cek pembaruan otomatis** dicentang, agent memeriksa sekali sehari dan menampilkan
+"versi baru tersedia" di panel — tapi **tidak pernah memasang sendiri**. Keputusan memasang
+selalu di tangan Anda.
+
+### Di komputer Anda — menerbitkan versi baru
+
+```powershell
+# 1. ubah nomor versi di src\Version.cs, mis. 1.0.3 -> 1.0.4
+# 2. bangun + buat manifest
+powershell -ExecutionPolicy Bypass -File make-release.ps1 -Notes "Apa yang berubah"
+# 3. unggah
+git add -A ; git commit -m "rilis 1.0.4" ; git push
+```
+
+Selesai. Komputer anak akan melihatnya dalam beberapa menit (CDN GitHub menyimpan cache
+manifest sekitar 5 menit).
+
+### Bagaimana pembaruan diamankan
+
+Updater berjalan sebagai SYSTEM, jadi rantai kepercayaannya dijaga berlapis:
+
+1. **Wajib HTTPS** — URL non-https ditolak, jadi tidak bisa disisipi di tengah jalan.
+2. **Cocokkan ukuran** dengan yang tertulis di manifest.
+3. **Cocokkan SHA256** berkas dengan yang tertulis di manifest. Kalau meleset satu byte pun,
+   berkas dihapus dan pembaruan dibatalkan — berkas tidak pernah dijalankan.
+4. **Berkas ditahan di folder yang hanya bisa ditulis Administrator/SYSTEM**, sehingga anak
+   tidak bisa menukarnya di sela-sela pemeriksaan dan penjalanan.
+5. **Verifikasi ulang setelah disalin**, dan kembalikan versi lama kalau tidak cocok.
+
+Ini melindungi dari gangguan jaringan dan berkas rusak. Yang **tidak** dilindunginya: kalau
+akun GitHub Anda sendiri diambil alih orang. Untuk menutup celah itu, aktifkan tanda tangan
+digital:
+
+```powershell
+# sekali saja
+powershell -ExecutionPolicy Bypass -File make-release.ps1 -GenerateKey
+```
+
+Simpan `release\signing-key.xml` baik-baik (sudah masuk `.gitignore`, jangan pernah di-commit),
+lalu salin kunci publik yang ditampilkan ke Panel orang tua → Pembaruan → "Kunci publik RSA"
+→ Simpan. Setelah itu setiap rilis ditandatangani otomatis, dan komputer anak akan **menolak**
+pembaruan apa pun yang tidak ditandatangani kunci Anda — termasuk yang diunggah orang lain
+ke repo Anda.
+
+---
+
 ## Nama proses aplikasi yang umum
 
 Gunakan sebagai perkiraan awal — **selalu pastikan** lewat tombol "Dari yang berjalan...".
@@ -157,6 +215,17 @@ acak. Salah password 5 kali mengunci panel selama 60 detik.
 | `status.json` | sisa waktu terkini (dibaca UI) |
 | `history.csv` | rekap harian |
 | `log.txt` | catatan kejadian |
+| `update\` | berkas pembaruan yang sudah diverifikasi |
+
+### Berkas proyek
+
+| Berkas | Kegunaan |
+|---|---|
+| `build.ps1` | membangun `bin\ScreenTimeGuard.exe` |
+| `install.ps1` | memasang di komputer anak (perlu Administrator) |
+| `uninstall.ps1` | mencopot pemasangan |
+| `make-release.ps1` | menerbitkan versi baru ke GitHub untuk updater |
+| `src\Version.cs` | satu-satunya tempat nomor versi diubah |
 
 ---
 
@@ -187,6 +256,9 @@ Supaya tidak ada harapan yang keliru:
 | "Agent tidak aktif" | `Get-Process ScreenTimeGuard`; baca `C:\ProgramData\ScreenTimeGuard\log.txt` |
 | Aplikasi tidak terhitung | Nama proses salah. Buka aplikasinya, lalu pakai tombol "Dari yang berjalan..." |
 | Lupa password | Sebagai Administrator jalankan `"C:\Program Files\ScreenTimeGuard\ScreenTimeGuard.exe" --setup` |
+| "Cek pembaruan" bilang sudah terbaru padahal baru push | CDN GitHub menyimpan cache manifest ~5 menit. Tunggu lalu coba lagi |
+| Pembaruan ditolak karena SHA256 | Berkas rusak saat diunduh, atau `latest.json` tidak cocok dengan `.exe` di repo. Jalankan ulang `make-release.ps1` lalu push |
+| Setelah update agent tidak menyala | Tunggu 5 menit — Scheduled Task menghidupkannya lagi. Cek `log.txt` bagian `[update]` |
 
 Menjalankan manual untuk uji coba:
 
