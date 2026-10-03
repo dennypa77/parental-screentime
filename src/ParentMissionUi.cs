@@ -174,7 +174,7 @@ namespace ScreenTimeGuard
             y += 28;
 
             _remoteInfo = Hint("", 0, y);
-            _remoteInfo.Height = 50;
+            _remoteInfo.Height = 68;
             page.Controls.Add(_remoteInfo);
             return y + 56;
         }
@@ -188,6 +188,8 @@ namespace ScreenTimeGuard
                 _remoteInfo.ForeColor = Color.DarkGreen;
                 _remoteInfo.Text = "Panel aktif. Dari komputer atau HP di jaringan rumah, buka:"
                     + Environment.NewLine + s.RemoteUrl
+                    + (string.IsNullOrEmpty(s.RemoteAltUrls)
+                        ? "" : Environment.NewLine + "Kalau tidak bisa, coba: " + s.RemoteAltUrls)
                     + Environment.NewLine + "Masuk dengan password orang tua yang sama.";
             }
             else

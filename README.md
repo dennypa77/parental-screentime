@@ -382,6 +382,8 @@ Supaya tidak ada harapan yang keliru:
 | Ikon tray tidak muncul | `Get-ScheduledTask 'ScreenTimeGuard Tray'` — jalankan manual dengan `Start-ScheduledTask` |
 | "Agent tidak aktif" | `Get-Process ScreenTimeGuard`; baca `C:\ProgramData\ScreenTimeGuard\log.txt` |
 | Aplikasi tidak terhitung | Nama proses salah. Buka aplikasinya, lalu pakai tombol "Dari yang berjalan..." |
+| Panel jarak jauh timeout (ERR_CONNECTION_TIMED_OUT) | Alamatnya salah, atau firewall memblokir. Pakai alamat persis yang tertulis di panel komputer anak; jangan menebak. Pastikan kedua perangkat di Wi-Fi yang sama |
+| Alamat di panel terlihat aneh (10.x / 172.x) | Komputer anak memakai VPN (Cloudflare WARP, Tailscale). Sejak 1.3.1 alamat Wi-Fi/Ethernet yang didahulukan; alamat cadangan ikut ditampilkan |
 | Lupa password | Sebagai Administrator jalankan `"C:\Program Files\ScreenTimeGuard\ScreenTimeGuard.exe" --setup` |
 | "Cek pembaruan" bilang sudah terbaru padahal baru push | CDN GitHub menyimpan cache manifest ~5 menit. Tunggu lalu coba lagi |
 | Pembaruan ditolak karena SHA256 | Berkas rusak saat diunduh, atau `latest.json` tidak cocok dengan `.exe` di repo. Jalankan ulang `make-release.ps1` lalu push |

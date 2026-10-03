@@ -58,7 +58,11 @@ namespace ScreenTimeGuard
 
         void StartWebPanel()
         {
-            if (_web == null) _web = new WebPanel(this);
+            if (_web == null)
+            {
+                _web = new WebPanel(this);
+                _web.ManageFirewall = !_simulate;
+            }
             if (!_settings.RemoteEnabled)
             {
                 _web.Stop();
@@ -305,6 +309,13 @@ namespace ScreenTimeGuard
                     status.WarnMinutes = _settings.WarnMinutes;
                     status.AgentVersion = AppInfo.Version;
                     status.RemoteUrl = (_web != null && _web.Running) ? _web.Url : "";
+                    status.RemoteAltUrls = "";
+                    if (_web != null && _web.Running)
+                    {
+                        List<string> urls = _web.AllUrls();
+                        if (urls.Count > 1)
+                            status.RemoteAltUrls = string.Join("   atau   ", urls.GetRange(1, urls.Count - 1).ToArray());
+                    }
                     status.UpdateAvailableVersion = _updateAvailableVersion;
                     status.OverlayEnabled = _settings.OverlayEnabled;
                     status.OverlayLocked = _settings.OverlayLocked;

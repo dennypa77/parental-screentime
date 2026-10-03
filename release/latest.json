@@ -1,8 +1,8 @@
 {
-    "version":  "1.3.0",
-    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.3.0.exe",
-    "sha256":  "3ffff7f77106406226dc60c8dc85ad96fd17085ac78bb07aa63128a6827fad31",
-    "size":  254464,
-    "notes":  "Panel jarak jauh: atur dari komputer atau HP sendiri lewat jaringan rumah, password tidak pernah dikirim lewat jaringan. Sistem misi: anak mengerjakan tugas, orang tua menyatakan lulus, waktu layar bertambah.",
+    "version":  "1.3.1",
+    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.3.1.exe",
+    "sha256":  "3e4771221fb58bf4b98854b463de0f6f8a2a022e5504433d5d362b591a7e08fa",
+    "size":  258048,
+    "notes":  "Perbaikan panel jarak jauh: alamat Wi-Fi / Ethernet yang ditampilkan, bukan alamat VPN seperti Cloudflare WARP atau Tailscale. Izin Windows Firewall kini dipasang sendiri oleh agent, jadi pemasangan yang diperbarui lewat tombol Pembaruan tidak perlu menjalankan install.ps1 lagi.",
     "signature":  ""
 }

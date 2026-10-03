@@ -61,6 +61,10 @@ namespace ScreenTimeGuard
             public DateTime LockedUntilUtc;
         }
 
+        /// <summary>Dimatikan saat mode simulasi, supaya pengujian tidak mengubah
+        /// aturan Windows Firewall yang sungguhan.</summary>
+        public bool ManageFirewall = true;
+
         public WebPanel(IPanelHost host) { _host = host; }
 
         public bool Running { get { return _listener != null && _listener.IsListening; } }
@@ -115,12 +119,71 @@ namespace ScreenTimeGuard
                 return;
             }
 
+            if (ManageFirewall) EnsureFirewallRule(true);
+
             _thread = new Thread(Loop);
             _thread.IsBackground = true;
             _thread.Name = "web-panel";
             _thread.Start();
             Log.Write("Panel jarak jauh aktif di " + _boundPrefix
                       + " (alamat untuk orang tua: " + Url + ")");
+        }
+
+        const string FirewallRuleName = "ScreenTimeGuard Panel Orang Tua";
+
+        /// <summary>
+        /// Memastikan Windows Firewall mengizinkan panel masuk. Dikerjakan agent sendiri,
+        /// bukan hanya oleh installer, supaya pemasangan yang diperbarui lewat tombol
+        /// Pembaruan juga mendapat izinnya tanpa perlu menjalankan install.ps1 lagi.
+        /// </summary>
+        static void EnsureFirewallRule(bool allow)
+        {
+            try
+            {
+                string exe = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
+                string q = "\"";
+                Netsh("advfirewall firewall delete rule name=" + q + FirewallRuleName + q);
+
+                if (!allow)
+                {
+                    Log.Write("Izin firewall panel jarak jauh dicabut.");
+                    return;
+                }
+
+                // Hanya jaringan rumah / kantor (private, domain), bukan jaringan publik.
+                int code = Netsh("advfirewall firewall add rule name=" + q + FirewallRuleName + q
+                                 + " dir=in action=allow program=" + q + exe + q
+                                 + " enable=yes profile=private,domain protocol=tcp");
+                Log.Write(code == 0
+                    ? "Izin Windows Firewall untuk panel jarak jauh siap."
+                    : "Gagal membuat izin firewall (kode " + code + "). Panel mungkin tidak bisa "
+                      + "dibuka dari komputer lain; jalankan install.ps1 sebagai Administrator.");
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Gagal mengatur izin firewall: " + ex.Message);
+            }
+        }
+
+        static int Netsh(string arguments)
+        {
+            try
+            {
+                System.Diagnostics.ProcessStartInfo psi =
+                    new System.Diagnostics.ProcessStartInfo("netsh.exe", arguments);
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
+                using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
+                {
+                    p.StandardOutput.ReadToEnd();
+                    p.StandardError.ReadToEnd();
+                    p.WaitForExit(15000);
+                    return p.ExitCode;
+                }
+            }
+            catch { return -1; }
         }
 
         public void Stop()
@@ -512,8 +575,50 @@ namespace ScreenTimeGuard
             return false;
         }
 
-        public static string LocalAddress()
+        /// <summary>Penanda kartu jaringan maya / VPN, yang alamatnya tidak berguna
+        /// untuk diketik orang tua di peramban.</summary>
+        static readonly string[] VirtualMarkers = new string[]
         {
+            "warp", "cloudflare", "tailscale", "zerotier", "wireguard", "openvpn", "vpn",
+            "virtual", "vmware", "virtualbox", "hyper-v", "loopback", "pseudo", "teredo",
+            "bluetooth", "docker", "wsl", "npcap", "radmin", "hamachi"
+        };
+
+        static bool LooksVirtual(NetworkInterface ni)
+        {
+            string text = ((ni.Name == null ? "" : ni.Name) + " "
+                           + (ni.Description == null ? "" : ni.Description)).ToLowerInvariant();
+            for (int i = 0; i < VirtualMarkers.Length; i++)
+                if (text.IndexOf(VirtualMarkers[i], StringComparison.Ordinal) >= 0) return true;
+            return false;
+        }
+
+        static bool HasDefaultGateway(IPInterfaceProperties props)
+        {
+            try
+            {
+                foreach (GatewayIPAddressInformation g in props.GatewayAddresses)
+                {
+                    if (g.Address == null) continue;
+                    if (g.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                    if (g.Address.Equals(IPAddress.Any)) continue;
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>
+        /// Semua alamat yang masuk akal diketik orang tua, diurutkan dari yang paling
+        /// mungkin benar. Kartu jaringan yang punya gerbang bawaan (Wi-Fi atau Ethernet
+        /// sungguhan) diutamakan; VPN seperti Cloudflare WARP atau Tailscale dipinggirkan,
+        /// karena alamatnya tidak bisa dibuka dari perangkat lain di rumah.
+        /// </summary>
+        public static List<string> LocalAddresses()
+        {
+            List<string> best = new List<string>();
+            List<string> rest = new List<string>();
             try
             {
                 NetworkInterface[] all = NetworkInterface.GetAllNetworkInterfaces();
@@ -522,18 +627,57 @@ namespace ScreenTimeGuard
                     NetworkInterface ni = all[i];
                     if (ni.OperationalStatus != OperationalStatus.Up) continue;
                     if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
-                    UnicastIPAddressInformationCollection addrs = ni.GetIPProperties().UnicastAddresses;
-                    foreach (UnicastIPAddressInformation ua in addrs)
+                    if (ni.NetworkInterfaceType == NetworkInterfaceType.Tunnel) continue;
+                    if (ni.NetworkInterfaceType == NetworkInterfaceType.Ppp) continue;
+
+                    IPInterfaceProperties props = ni.GetIPProperties();
+                    bool gateway = HasDefaultGateway(props);
+                    bool virtualNic = LooksVirtual(ni);
+
+                    foreach (UnicastIPAddressInformation ua in props.UnicastAddresses)
                     {
                         if (ua.Address.AddressFamily != AddressFamily.InterNetwork) continue;
-                        IPEndPoint ep = new IPEndPoint(ua.Address, 0);
-                        if (IsLocalNetwork(ep) && !IPAddress.IsLoopback(ua.Address))
-                            return ua.Address.ToString();
+                        if (IPAddress.IsLoopback(ua.Address)) continue;
+
+                        byte[] b = ua.Address.GetAddressBytes();
+                        if (b[0] == 169 && b[1] == 254) continue;   // alamat darurat: tidak terhubung
+                        if (!IsLocalNetwork(new IPEndPoint(ua.Address, 0))) continue;
+
+                        string text = ua.Address.ToString();
+                        if (virtualNic) continue;
+                        if (gateway) best.Add(text); else rest.Add(text);
                     }
                 }
             }
             catch { }
-            return "";
+
+            // 192.168.x adalah pola jaringan rumah paling umum, jadi didahulukan.
+            best.Sort(delegate (string a, string c)
+            {
+                int ra = a.StartsWith("192.168.", StringComparison.Ordinal) ? 0 : 1;
+                int rc = c.StartsWith("192.168.", StringComparison.Ordinal) ? 0 : 1;
+                return ra != rc ? ra - rc : string.CompareOrdinal(a, c);
+            });
+
+            for (int i = 0; i < rest.Count; i++)
+                if (!best.Contains(rest[i])) best.Add(rest[i]);
+            return best;
+        }
+
+        public static string LocalAddress()
+        {
+            List<string> list = LocalAddresses();
+            return list.Count > 0 ? list[0] : "";
+        }
+
+        /// <summary>Semua alamat yang bisa dicoba, untuk ditampilkan di panel komputer anak.</summary>
+        public List<string> AllUrls()
+        {
+            List<string> urls = new List<string>();
+            if (!Running) return urls;
+            List<string> addrs = LocalAddresses();
+            for (int i = 0; i < addrs.Count; i++) urls.Add("http://" + addrs[i] + ":" + _port + "/");
+            return urls;
         }
 
         static string JsonString(string value)
