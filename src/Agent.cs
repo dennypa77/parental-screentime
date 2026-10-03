@@ -308,6 +308,7 @@ namespace ScreenTimeGuard
                     status.ResetsAtText = string.Format("{0:00}:00", _settings.ResetHour);
                     status.WarnMinutes = _settings.WarnMinutes;
                     status.AgentVersion = AppInfo.Version;
+                    status.ComputerName = Environment.MachineName;
                     status.RemoteUrl = (_web != null && _web.Running) ? _web.Url : "";
                     status.RemoteAltUrls = "";
                     if (_web != null && _web.Running)

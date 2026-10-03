@@ -96,6 +96,7 @@ namespace ScreenTimeGuard
     <div class='row space' style='margin-bottom:12px'>
       <div class='grow'>
         <h1>Panel Orang Tua</h1>
+        <div class='sub'>Mengatur komputer: <b id='machine'>-</b></div>
         <div class='sub' id='daySub'>&nbsp;</div>
       </div>
       <button id='btnLogout'>Keluar</button>
@@ -421,6 +422,9 @@ function refresh() {
 }
 
 function render() {
+  var who = state.ComputerName || '(tidak diketahui)';
+  $('machine').textContent = who + '  -  versi ' + (state.AgentVersion || '?');
+  document.title = 'Panel Orang Tua - ' + who;
   $('daySub').textContent = state.Day + ' - ' +
     (state.IsWeekend ? 'akhir pekan' : 'hari sekolah') +
     ' - reset pukul ' + state.ResetsAtText +

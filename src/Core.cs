@@ -350,6 +350,7 @@ namespace ScreenTimeGuard
         [DataMember(Order = 26)] public int MissionsAvailable;    // siap dikerjakan anak
         [DataMember(Order = 27)] public string RemoteUrl;         // "" kalau panel jarak jauh mati
         [DataMember(Order = 28)] public string RemoteAltUrls;     // alamat lain yang bisa dicoba
+        [DataMember(Order = 29)] public string ComputerName;      // komputer mana yang sedang diatur
 
         [DataMember(Order = 50)] public List<StatusApp> Apps;
         [DataMember(Order = 51)] public List<StatusMission> Missions;
@@ -366,6 +367,7 @@ namespace ScreenTimeGuard
             SessionActionText = "";
             RemoteUrl = "";
             RemoteAltUrls = "";
+            ComputerName = "";
             Apps = new List<StatusApp>();
             Missions = new List<StatusMission>();
         }
