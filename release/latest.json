@@ -1,8 +1,8 @@
 {
-    "version":  "1.3.1",
-    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.3.1.exe",
-    "sha256":  "3e4771221fb58bf4b98854b463de0f6f8a2a022e5504433d5d362b591a7e08fa",
-    "size":  258048,
-    "notes":  "Perbaikan panel jarak jauh: alamat Wi-Fi / Ethernet yang ditampilkan, bukan alamat VPN seperti Cloudflare WARP atau Tailscale. Izin Windows Firewall kini dipasang sendiri oleh agent, jadi pemasangan yang diperbarui lewat tombol Pembaruan tidak perlu menjalankan install.ps1 lagi.",
+    "version":  "1.3.2",
+    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.3.2.exe",
+    "sha256":  "d57575808a111cf902d32731767b42d2ee479a2e5b4bfba02f9d09877b3c2bd3",
+    "size":  259072,
+    "notes":  "Perbaikan tampilan misi: kartu misi sebelumnya menciut jadi garis tipis sehingga keterangan tugas dan jumlah hadiah waktunya tidak terlihat. Hadiah waktu kini ditonjolkan, keterangan tugas selalu ditampilkan, dan tampilan ikut menyesuaikan saat jendela diubah ukurannya.",
     "signature":  ""
 }

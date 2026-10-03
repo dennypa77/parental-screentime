@@ -395,6 +395,7 @@ Menjalankan manual untuk uji coba:
 ScreenTimeGuard.exe --agent    # pengawas (tanpa jendela)
 ScreenTimeGuard.exe --ui       # ikon tray
 ScreenTimeGuard.exe --setup    # atur password (perlu Administrator)
+ScreenTimeGuard.exe --missions # buka jendela misi saja (jalan pintas untuk anak)
 
 # Menguji aturan tanpa mengganggu pemasangan yang sedang berjalan:
 # seluruh logika berjalan di folder terpisah, tetapi TIDAK menutup aplikasi

@@ -16,6 +16,7 @@ namespace ScreenTimeGuard
         readonly Label _sub = new Label();
         readonly System.Windows.Forms.Timer _timer = new System.Windows.Forms.Timer();
         string _signature = "";
+        int _lastWidth;
 
         public MissionForm()
         {
@@ -62,6 +63,13 @@ namespace ScreenTimeGuard
             Controls.Add(_header);
             Controls.Add(bar);
 
+            // Lebar kartu dihitung saat digambar, jadi perlu digambar ulang
+            // kalau jendelanya diubah ukurannya.
+            _list.ClientSizeChanged += delegate
+            {
+                if (Math.Abs(_list.ClientSize.Width - _lastWidth) > 4) Reload(true);
+            };
+
             _timer.Interval = 2000;
             _timer.Tick += delegate { Reload(false); };
             _timer.Start();
@@ -95,6 +103,7 @@ namespace ScreenTimeGuard
                         + done + " sudah lulus"
                         + Environment.NewLine + "Selesaikan misi untuk menambah waktu bermain.";
 
+            _lastWidth = _list.ClientSize.Width;
             _list.SuspendLayout();
             _list.Controls.Clear();
             if (st.Missions.Count == 0)
@@ -110,39 +119,55 @@ namespace ScreenTimeGuard
             _list.ResumeLayout();
         }
 
-        Panel BuildCard(StatusMission m)
+        Control BuildCard(StatusMission m)
         {
-            int width = Math.Max(340, _list.ClientSize.Width - 40);
+            // Lebar batang gulir selalu dikurangi, supaya kartu tidak meluber ke kanan
+            // begitu misinya banyak dan batang gulir muncul.
+            int avail = _list.ClientSize.Width - _list.Padding.Horizontal
+                        - SystemInformation.VerticalScrollBarWidth - 4;
+            int width = Math.Max(300, avail);
 
-            Panel card = new Panel();
-            card.Width = width;
-            card.BackColor = Theme.Card;
-            card.Margin = new Padding(0, 0, 0, 10);
-            card.Padding = new Padding(12, 10, 12, 12);
+            // Kartunya sendiri yang menata isinya. Sebelumnya kartu memakai AutoSize
+            // dengan anak ber-Dock, dan WinForms tidak menghitung anak ber-Dock saat
+            // mengukur, sehingga kartunya menciut jadi garis tipis.
+            FlowLayoutPanel card = new FlowLayoutPanel();
+            card.FlowDirection = FlowDirection.TopDown;
+            card.WrapContents = false;
             card.AutoSize = true;
             card.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-
-            FlowLayoutPanel inner = new FlowLayoutPanel();
-            inner.FlowDirection = FlowDirection.TopDown;
-            inner.WrapContents = false;
-            inner.AutoSize = true;
-            inner.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            inner.Dock = DockStyle.Top;
+            card.MinimumSize = new Size(width, 0);
+            card.MaximumSize = new Size(width, 0);
+            card.BackColor = Theme.Card;
+            card.Margin = new Padding(0, 0, 0, 12);
+            card.Padding = new Padding(14, 12, 14, 14);
 
             Color accent = m.Status == "approved" ? Theme.Good
                          : m.Status == "submitted" ? Theme.Warn
                          : m.Status == "rejected" ? Theme.Bad
                          : Theme.Accent;
 
-            int textWidth = width - 44;
-            inner.Controls.Add(Line(m.Title, Theme.BodyBold, Theme.Text, textWidth));
-            if (m.Detail.Length > 0)
-                inner.Controls.Add(Line(m.Detail, Theme.Body, Theme.TextDim, textWidth));
-            inner.Controls.Add(Line(m.RewardText + "   •   " + m.StatusText,
-                                    Theme.Body, accent, textWidth));
+            int textWidth = width - 36;
+
+            card.Controls.Add(Line(m.Title, Theme.H2, Theme.Text, textWidth, 6));
+
+            // Hadiahnya dibuat menonjol: ini yang paling ingin dilihat anak.
+            card.Controls.Add(Line(m.RewardText, Theme.BodyBold, Theme.Good, textWidth, 8));
+
+            card.Controls.Add(Line(m.Detail.Length > 0
+                    ? "Yang harus dikerjakan: " + m.Detail
+                    : "Yang harus dikerjakan: (orang tua belum menulis keterangan)",
+                m.Detail.Length > 0 ? Theme.Body : Theme.Body,
+                m.Detail.Length > 0 ? Theme.Text : Theme.TextDim, textWidth, 8));
+
+            card.Controls.Add(Line("Status: " + m.StatusText + "   •   "
+                                   + RepeatText(m.Repeat), Theme.Body, accent, textWidth, 2));
+
+            if (m.ChildNote.Length > 0)
+                card.Controls.Add(Line("Catatanmu: " + m.ChildNote,
+                                       Theme.Body, Theme.TextDim, textWidth, 2));
             if (m.ParentNote.Length > 0)
-                inner.Controls.Add(Line("Pesan orang tua: " + m.ParentNote,
-                                        Theme.Body, Theme.TextDim, textWidth));
+                card.Controls.Add(Line("Pesan orang tua: " + m.ParentNote,
+                                       Theme.Body, Theme.TextDim, textWidth, 2));
 
             if (m.CanSubmit)
             {
@@ -150,28 +175,34 @@ namespace ScreenTimeGuard
                 submit.Text = "Saya sudah selesai";
                 submit.AutoSize = true;
                 submit.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-                submit.MinimumSize = new Size(180, 32);
-                submit.Margin = new Padding(0, 8, 0, 0);
+                submit.MinimumSize = new Size(190, 34);
+                submit.Margin = new Padding(0, 10, 0, 0);
                 Theme.StyleButton(submit, true);
                 string id = m.Id;
                 bool needsNote = m.NeedsNote;
                 submit.Click += delegate { Submit(id, needsNote); };
-                inner.Controls.Add(submit);
+                card.Controls.Add(submit);
             }
 
-            card.Controls.Add(inner);
             return card;
         }
 
-        static Label Line(string text, Font font, Color color, int width)
+        static string RepeatText(string repeat)
+        {
+            if (repeat == "weekly") return "bisa diulang tiap minggu";
+            if (repeat == "once") return "hanya sekali";
+            return "muncul lagi besok";
+        }
+
+        static Label Line(string text, Font font, Color color, int width, int gapBelow)
         {
             Label l = new Label();
             l.Text = text;
             l.Font = font;
             l.ForeColor = color;
-            l.MaximumSize = new Size(Math.Max(200, width), 0);
+            l.MaximumSize = new Size(Math.Max(180, width), 0);
             l.AutoSize = true;
-            l.Margin = new Padding(0, 0, 0, 4);
+            l.Margin = new Padding(0, 0, 0, gapBelow);
             return l;
         }
 

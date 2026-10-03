@@ -16,7 +16,7 @@ namespace ScreenTimeGuard
             {
                 string a = args[i].TrimStart('-', '/').ToLowerInvariant();
                 if (a == "agent" || a == "ui" || a == "setup" || a == "apply-update"
-                    || a == "simulate") mode = a;
+                    || a == "simulate" || a == "missions") mode = a;
             }
 
             AppDomain.CurrentDomain.UnhandledException += delegate (object s, UnhandledExceptionEventArgs e)
@@ -32,6 +32,7 @@ namespace ScreenTimeGuard
                     case "setup": return RunSetup();
                     case "apply-update": return RunApplyUpdate(args);
                     case "simulate": return RunSimulation(args);
+                    case "missions": return RunMissionWindow();
                     default: return RunUi();
                 }
             }
@@ -80,6 +81,19 @@ namespace ScreenTimeGuard
                 Application.Run(new TrayApp());
                 return 0;
             }
+        }
+
+        /// <summary>
+        /// --missions : membuka jendela misi saja. Berguna sebagai jalan pintas untuk
+        /// anak, dan untuk memeriksa tampilannya tanpa menjalankan seluruh ikon tray.
+        /// Hanya menampilkan; tidak bisa dipakai mengubah aturan.
+        /// </summary>
+        static int RunMissionWindow()
+        {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new MissionForm());
+            return 0;
         }
 
         // ------------------------------------------------------------ simulasi
