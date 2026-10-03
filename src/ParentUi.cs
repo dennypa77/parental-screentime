@@ -374,7 +374,7 @@ namespace ScreenTimeGuard
     }
 
     /// <summary>Jendela pengaturan untuk orang tua.</summary>
-    public class ParentForm : Form
+    public partial class ParentForm : Form
     {
         readonly string _password;
         Settings _settings;
@@ -412,6 +412,7 @@ namespace ScreenTimeGuard
             tabs.Dock = DockStyle.Fill;
             tabs.TabPages.Add(BuildAppsTab());
             tabs.TabPages.Add(BuildRulesTab());
+            tabs.TabPages.Add(BuildMissionTab());
             tabs.TabPages.Add(BuildTodayTab());
             tabs.TabPages.Add(BuildSecurityTab());
             tabs.TabPages.Add(BuildHistoryTab());
@@ -565,6 +566,8 @@ namespace ScreenTimeGuard
             page.Controls.Add(Hint("Waktu untuk menyimpan permainan sebelum aplikasi ditutup paksa.",
                                    260, y + 3));
             y += 38;
+
+            y = BuildRemoteSection(page, y);
 
             page.Controls.Add(Section("Batas pemakaian komputer (SEMUA kegiatan)", 0, ref y));
             _sessionEnabled = Check("Kunci layar kalau jatah pemakaian komputer habis", 0, y);
@@ -742,6 +745,7 @@ namespace ScreenTimeGuard
                 ? 180 : Math.Min(1440, _settings.TotalWeekendMinutes);
             _totalWeekend.Enabled = !_totalWeekendOff.Checked;
 
+            BindRemote();
             _sessionEnabled.Checked = _settings.SessionEnabled;
             _sessionWeekdayOff.Checked = _settings.SessionWeekdayMinutes < 0;
             _sessionWeekday.Value = _settings.SessionWeekdayMinutes < 0
@@ -777,6 +781,7 @@ namespace ScreenTimeGuard
             _settings.GraceSeconds = (int)_grace.Value;
             _settings.TotalWeekdayMinutes = _totalWeekdayOff.Checked ? -1 : (int)_totalWeekday.Value;
             _settings.TotalWeekendMinutes = _totalWeekendOff.Checked ? -1 : (int)_totalWeekend.Value;
+            CollectRemote();
             _settings.SessionEnabled = _sessionEnabled.Checked;
             _settings.SessionWeekdayMinutes = _sessionWeekdayOff.Checked ? -1 : (int)_sessionWeekday.Value;
             _settings.SessionWeekendMinutes = _sessionWeekendOff.Checked ? -1 : (int)_sessionWeekend.Value;
@@ -853,6 +858,8 @@ namespace ScreenTimeGuard
         {
             Status s = StatusReader.Read();
             if (_versionLabel != null) RefreshVersionLabel();
+            RefreshRemoteInfo(s);
+            RefreshMissions(s);
             if (!StatusReader.IsFresh(s))
             {
                 _todaySummary.Text = "Agent tidak merespons - data tidak diperbarui.";

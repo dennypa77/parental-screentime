@@ -13,7 +13,7 @@ namespace ScreenTimeGuard
     /// harian, dan melayani perintah dari UI lewat named pipe.
     /// Idealnya dijalankan sebagai SYSTEM lewat Scheduled Task.
     /// </summary>
-    public class Agent
+    public class Agent : IPanelHost
     {
         const int TickMs = 5000;
         const int MaxElapsedSeconds = 30;       // jaga-jaga kalau komputer sleep
@@ -30,6 +30,8 @@ namespace ScreenTimeGuard
         DateTime _lastUsageSave = DateTime.MinValue;
 
         readonly Dictionary<string, DateTime> _graceStart = new Dictionary<string, DateTime>();
+        readonly MissionStore _missions = new MissionStore();
+        readonly Dictionary<string, DateTime> _submitThrottle = new Dictionary<string, DateTime>();
 
         string _foregroundProcess = "";
         DateTime _foregroundAtUtc = DateTime.MinValue;
@@ -52,6 +54,35 @@ namespace ScreenTimeGuard
         volatile bool _stop;
         volatile bool _stopForUpdate;
 
+        WebPanel _web;
+
+        void StartWebPanel()
+        {
+            if (_web == null) _web = new WebPanel(this);
+            if (!_settings.RemoteEnabled)
+            {
+                _web.Stop();
+                return;
+            }
+            _web.Start(_settings.RemotePort, _settings.RemoteLanOnly);
+        }
+
+        void RestartWebPanel()
+        {
+            try { StartWebPanel(); }
+            catch (Exception ex) { Log.Write("Panel jarak jauh gagal dimulai ulang: " + ex.Message); }
+        }
+
+        public bool TryGetPasswordMaterial(out string hashBase64, out string saltBase64)
+        {
+            lock (_gate)
+            {
+                hashBase64 = _settings.PasswordHash;
+                saltBase64 = _settings.PasswordSalt;
+                return !string.IsNullOrEmpty(hashBase64) && !string.IsNullOrEmpty(saltBase64);
+            }
+        }
+
         /// <summary>Mode uji: seluruh logika berjalan, tetapi tidak menutup aplikasi
         /// dan tidak mengunci layar. Dipakai lewat --simulate.</summary>
         readonly bool _simulate;
@@ -67,6 +98,7 @@ namespace ScreenTimeGuard
             Paths.EnsureDir();
             LoadSettings(true);
             LoadUsage();
+            _missions.Load();
 
             Log.Write("=== Agent " + AppInfo.Version + " mulai (elevated=" + Util.IsElevated()
                       + ", user=" + Environment.UserName
@@ -74,6 +106,7 @@ namespace ScreenTimeGuard
 
             _server = new IpcServer(HandleRequest);
             _server.Start();
+            StartWebPanel();
 
             _lastTick = DateTime.Now;
             while (!_stop)
@@ -89,6 +122,7 @@ namespace ScreenTimeGuard
                 }
                 Thread.Sleep(TickMs);
             }
+            if (_web != null) _web.Stop();
             Log.Write("=== Agent berhenti ===");
         }
 
@@ -270,6 +304,7 @@ namespace ScreenTimeGuard
                     status.ResetsAtText = string.Format("{0:00}:00", _settings.ResetHour);
                     status.WarnMinutes = _settings.WarnMinutes;
                     status.AgentVersion = AppInfo.Version;
+                    status.RemoteUrl = (_web != null && _web.Running) ? _web.Url : "";
                     status.UpdateAvailableVersion = _updateAvailableVersion;
                     status.OverlayEnabled = _settings.OverlayEnabled;
                     status.OverlayLocked = _settings.OverlayLocked;
@@ -279,6 +314,12 @@ namespace ScreenTimeGuard
                                                    paused, bedtime, totalExceeded));
 
                     EnforceSession(status, elapsed, weekend, paused);
+
+                    if (_missions.EnsureRunsForToday(_settings.Missions, _usage.Day)) _missions.Save();
+                    status.Missions = _missions.BuildStatus(_settings.Missions, _usage.Day);
+                    status.MissionsPending = _missions.CountByStatus(_settings.Missions, _usage.Day, "submitted");
+                    status.MissionsAvailable = _missions.CountByStatus(_settings.Missions, _usage.Day, "available")
+                                             + _missions.CountByStatus(_settings.Missions, _usage.Day, "rejected");
 
                     WriteStatus(status);
                 }
@@ -723,23 +764,49 @@ namespace ScreenTimeGuard
                 }
                 return Ok("");
             }
+            if (cmd == "MISSIONSUBMIT")
+            {
+                lock (_gate)
+                {
+                    // Dibatasi supaya tombol tidak bisa ditekan beruntun.
+                    DateTime last;
+                    string key = Util.NormalizeProcessName(req.Arg1);
+                    if (_submitThrottle.TryGetValue(key, out last)
+                        && (DateTime.UtcNow - last).TotalSeconds < 3)
+                        return Fail("Tunggu sebentar sebelum mengirim lagi.");
+                    _submitThrottle[key] = DateTime.UtcNow;
+
+                    Mission m = FindMission(req.Arg1);
+                    string error = _missions.Submit(m, _usage.Day, req.Payload);
+                    return error == null ? Ok("") : Fail(error);
+                }
+            }
+
             if (cmd == "HASPASSWORD")
             {
                 lock (_gate) { return Ok(string.IsNullOrEmpty(_settings.PasswordHash) ? "no" : "yes"); }
             }
 
-            // Perintah pembaruan memakai jaringan. Otorisasinya di dalam kunci, tetapi
-            // unduhannya di luar, supaya jaringan lambat tidak menunda penegakan batas waktu.
+            lock (_gate)
+            {
+                IpcResponse failure;
+                if (!Authorize(req, out failure)) return failure;
+            }
+            return ExecuteAuthorized(req);
+        }
+
+        /// <summary>
+        /// Menjalankan perintah orang tua yang keabsahannya SUDAH dipastikan
+        /// (lewat password di named pipe, atau sesi masuk di panel jarak jauh).
+        /// </summary>
+        public IpcResponse ExecuteAuthorized(IpcRequest req)
+        {
+            string cmd = (req.Command == null ? "" : req.Command).ToUpperInvariant();
+
             if (cmd == "CHECKUPDATE" || cmd == "APPLYUPDATE")
             {
                 Settings snapshot;
-                lock (_gate)
-                {
-                    IpcResponse updateFailure;
-                    if (!Authorize(req, out updateFailure)) return updateFailure;
-                    snapshot = _settings;
-                }
-
+                lock (_gate) snapshot = _settings;
                 try
                 {
                     if (cmd == "CHECKUPDATE")
@@ -752,7 +819,6 @@ namespace ScreenTimeGuard
                         }
                         return Ok(Json.Write(result));
                     }
-
                     string installing = Updater.DownloadAndLaunchInstaller(snapshot);
                     _stopForUpdate = true;
                     return Ok(installing);
@@ -766,9 +832,6 @@ namespace ScreenTimeGuard
 
             lock (_gate)
             {
-                IpcResponse failure;
-                if (!Authorize(req, out failure)) return failure;
-
                 switch (cmd)
                 {
                     case "VERIFY":
@@ -810,6 +873,28 @@ namespace ScreenTimeGuard
                     case "PAUSE":
                         return ApplyPause(req.Arg1);
 
+                    case "MISSIONS":
+                        return Ok(Json.Write(_missions.BuildStatus(_settings.Missions, _usage.Day)));
+
+                    case "MISSIONDECIDE":
+                        {
+                            Mission m = FindMission(req.Arg1);
+                            if (m == null) return Fail("Misi tidak ditemukan.");
+                            bool approve = string.Equals(req.Arg2, "approve", StringComparison.OrdinalIgnoreCase);
+                            int reward;
+                            string error = _missions.Decide(m, _usage.Day, approve, req.Payload, out reward);
+                            if (error != null) return Fail(error);
+                            if (reward > 0)
+                            {
+                                string awardError = AwardMinutes(m.RewardTarget, reward);
+                                if (awardError != null)
+                                    Log.Write("Hadiah misi gagal diberikan: " + awardError);
+                                else
+                                    SaveUsage();
+                            }
+                            return Ok("");
+                        }
+
                     case "GETHISTORY":
                         {
                             if (!File.Exists(Paths.History)) return Ok("");
@@ -820,6 +905,14 @@ namespace ScreenTimeGuard
                         return Fail("Perintah tidak dikenal: " + cmd);
                 }
             }
+        }
+
+        Mission FindMission(string id)
+        {
+            if (_settings.Missions == null || string.IsNullOrEmpty(id)) return null;
+            for (int i = 0; i < _settings.Missions.Count; i++)
+                if (_settings.Missions[i].Id == id) return _settings.Missions[i];
+            return null;
         }
 
         IpcResponse ApplySettings(string payload)
@@ -875,15 +968,50 @@ namespace ScreenTimeGuard
                 if (!duplicate) clean.Add(a);
             }
 
+            if (incoming.Missions == null) incoming.Missions = new List<Mission>();
+            List<Mission> missions = new List<Mission>();
+            for (int i = 0; i < incoming.Missions.Count; i++)
+            {
+                Mission m = incoming.Missions[i];
+                if (m == null) continue;
+                if (string.IsNullOrEmpty(m.Title)) continue;
+                if (string.IsNullOrEmpty(m.Id)) m.Id = MissionStore.NewId();
+                if (m.Title.Length > 120) m.Title = m.Title.Substring(0, 120);
+                if (m.Detail != null && m.Detail.Length > 1000) m.Detail = m.Detail.Substring(0, 1000);
+                if (m.RewardMinutes < 0) m.RewardMinutes = 0;
+                if (m.RewardMinutes > 600) m.RewardMinutes = 600;
+                if (m.Repeat != "weekly" && m.Repeat != "once") m.Repeat = "daily";
+                if (string.IsNullOrEmpty(m.RewardTarget)) m.RewardTarget = "SESSION";
+                if (!string.Equals(m.RewardTarget, "SESSION", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(m.RewardTarget, "TOTAL", StringComparison.OrdinalIgnoreCase))
+                {
+                    m.RewardTarget = Util.NormalizeProcessName(m.RewardTarget);
+                    bool known = false;
+                    for (int j = 0; j < clean.Count; j++) if (clean[j].Process == m.RewardTarget) known = true;
+                    if (!known)
+                        return Fail("Misi \"" + m.Title + "\" memberi hadiah ke aplikasi \""
+                                    + m.RewardTarget + "\" yang tidak ada dalam daftar aplikasi.");
+                }
+                missions.Add(m);
+            }
+            incoming.Missions = missions;
+
+            if (incoming.RemotePort < 1024 || incoming.RemotePort > 65535) incoming.RemotePort = 8777;
+
             // Password tidak pernah dikirim lewat kabel; pertahankan yang tersimpan.
             incoming.Apps = clean;
+            bool remoteChanged = incoming.RemoteEnabled != _settings.RemoteEnabled
+                                 || incoming.RemotePort != _settings.RemotePort
+                                 || incoming.RemoteLanOnly != _settings.RemoteLanOnly;
             incoming.PasswordHash = _settings.PasswordHash;
             incoming.PasswordSalt = _settings.PasswordSalt;
             incoming.Version = 1;
 
             _settings = incoming;
             SaveSettings();
-            Log.Write("Pengaturan diperbarui (" + clean.Count + " aplikasi).");
+            Log.Write("Pengaturan diperbarui (" + clean.Count + " aplikasi, "
+                      + missions.Count + " misi).");
+            if (remoteChanged) RestartWebPanel();
             return Ok("");
         }
 
@@ -894,6 +1022,15 @@ namespace ScreenTimeGuard
             if (minutes == 0) return Ok("");
             if (minutes < -600 || minutes > 600) return Fail("Bonus harus antara -600 dan 600 menit.");
 
+            string error = AwardMinutes(target, minutes);
+            if (error != null) return Fail(error);
+            SaveUsage();
+            return Ok("");
+        }
+
+        /// <summary>Menambahkan menit ke jatah tertentu. Mengembalikan pesan galat atau null.</summary>
+        string AwardMinutes(string target, int minutes)
+        {
             if (string.Equals(target, "TOTAL", StringComparison.OrdinalIgnoreCase))
             {
                 _usage.TotalBonusMinutes += minutes;
@@ -914,7 +1051,7 @@ namespace ScreenTimeGuard
             else
             {
                 string p = Util.NormalizeProcessName(target);
-                if (_settings.Find(p) == null) return Fail("Aplikasi tidak ada dalam daftar.");
+                if (_settings.Find(p) == null) return "Aplikasi tidak ada dalam daftar.";
                 UsageEntry e = _usage.Get(p);
                 e.BonusMinutes += minutes;
                 // Bonus baru berarti anak berhak atas masa tenggang lagi nanti.
@@ -925,8 +1062,7 @@ namespace ScreenTimeGuard
                 }
                 Log.Write("Bonus " + minutes + " menit untuk " + p + ".");
             }
-            SaveUsage();
-            return Ok("");
+            return null;
         }
 
         IpcResponse ApplyResetUsage(string target)

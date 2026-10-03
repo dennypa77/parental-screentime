@@ -1,8 +1,8 @@
 {
-    "version":  "1.2.0",
-    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.2.0.exe",
-    "sha256":  "45ee82a38189db2af92486dbe470052d67ee659eb609ec291a95edc8df1a321e",
-    "size":  115712,
-    "notes":  "Batas pemakaian komputer menyeluruh: hitung SEMUA kegiatan anak, lalu kunci layar saat jatahnya habis. Termasuk deteksi diam, bonus waktu komputer, dan tenggang setelah buka kunci.",
+    "version":  "1.3.0",
+    "url":  "https://raw.githubusercontent.com/dennypa77/parental-screentime/main/release/ScreenTimeGuard-1.3.0.exe",
+    "sha256":  "3ffff7f77106406226dc60c8dc85ad96fd17085ac78bb07aa63128a6827fad31",
+    "size":  254464,
+    "notes":  "Panel jarak jauh: atur dari komputer atau HP sendiri lewat jaringan rumah, password tidak pernah dikirim lewat jaringan. Sistem misi: anak mengerjakan tugas, orang tua menyatakan lulus, waktu layar bertambah.",
     "signature":  ""
 }

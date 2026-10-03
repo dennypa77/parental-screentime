@@ -46,7 +46,7 @@ if (-not (Test-Path $srcExe)) {
 if (-not (Test-Path $srcExe)) { throw "Gagal menemukan $srcExe" }
 
 # ------------------------------------------------------------------ 2. salin
-Write-Host "[1/5] Menyalin program ke $installDir"
+Write-Host "[1/6] Menyalin program ke $installDir"
 foreach ($t in @($taskAgent, $taskUi)) {
     if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) {
         Stop-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue
@@ -59,7 +59,7 @@ if (-not (Test-Path $installDir)) { New-Item -ItemType Directory -Path $installD
 Copy-Item -Path $srcExe -Destination $exe -Force
 
 # ------------------------------------------------------- 3. folder data + izin
-Write-Host "[2/5] Menyiapkan folder data dan mengunci izinnya"
+Write-Host "[2/6] Menyiapkan folder data dan mengunci izinnya"
 if (-not (Test-Path $dataDir)) { New-Item -ItemType Directory -Path $dataDir -Force | Out-Null }
 
 # SYSTEM & Administrators: penuh. Users: hanya baca (agar UI bisa membaca status.json).
@@ -80,7 +80,7 @@ if (Test-Path $settings) {
 }
 
 if ($needPassword) {
-    Write-Host "[3/5] Membuat password orang tua (jendela akan terbuka)"
+    Write-Host "[3/6] Membuat password orang tua (jendela akan terbuka)"
     & $exe --setup | Out-Null
     $ok = $false
     if (Test-Path $settings) {
@@ -91,12 +91,12 @@ if ($needPassword) {
     }
     if (-not $ok) { throw "Password belum diatur. Pemasangan dibatalkan." }
 } else {
-    Write-Host "[3/5] Password orang tua sudah ada, dilewati."
+    Write-Host "[3/6] Password orang tua sudah ada, dilewati."
     Write-Host "      (untuk mengganti: jalankan `"$exe`" --setup sebagai Administrator)"
 }
 
 # ------------------------------------------------------- 5. daftar scheduled task
-Write-Host "[4/5] Mendaftarkan Scheduled Task"
+Write-Host "[4/6] Mendaftarkan Scheduled Task"
 
 $agentXml = @"
 <?xml version="1.0" encoding="UTF-16"?>
@@ -210,8 +210,23 @@ $uiXml = @"
 Register-ScheduledTask -TaskName $taskAgent -Xml $agentXml -Force | Out-Null
 Register-ScheduledTask -TaskName $taskUi    -Xml $uiXml    -Force | Out-Null
 
+# -------------------------------------------------- 5b. izin Windows Firewall
+Write-Host "[5/6] Menyiapkan izin Windows Firewall untuk panel jarak jauh"
+$ruleName = 'ScreenTimeGuard Panel Orang Tua'
+try {
+    Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue |
+        Remove-NetFirewallRule -ErrorAction SilentlyContinue
+    # Hanya jaringan Private/Domain (jaringan rumah atau kantor), bukan jaringan publik.
+    New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Program $exe `
+        -Action Allow -Profile Private,Domain -Protocol TCP -ErrorAction Stop | Out-Null
+    Write-Host "      izin dibuat (hanya untuk jaringan Private/Domain)"
+} catch {
+    Write-Host "      Peringatan: gagal membuat izin firewall - $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "      Panel jarak jauh mungkin tidak bisa dibuka dari komputer lain." -ForegroundColor Yellow
+}
+
 # ------------------------------------------------------------------ 6. jalankan
-Write-Host "[5/5] Menjalankan pengawas"
+Write-Host "[6/6] Menjalankan pengawas"
 Start-ScheduledTask -TaskName $taskAgent
 Start-Sleep -Seconds 3
 Start-ScheduledTask -TaskName $taskUi

@@ -624,6 +624,10 @@ namespace ScreenTimeGuard
         readonly Timer _foreground = new Timer();
 
         ChildForm _childForm;
+        MissionForm _missionForm;
+        ToolStripMenuItem _missionMenu;
+        readonly Dictionary<string, string> _missionStatus = new Dictionary<string, string>();
+        bool _missionsSeeded;
         ParentForm _parentForm;
         OverlayForm _overlay;
         OverlayPrefs _overlayPrefs;
@@ -648,6 +652,9 @@ namespace ScreenTimeGuard
 
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.Add("Sisa waktu hari ini", null, delegate { ShowChild(); });
+            _missionMenu = new ToolStripMenuItem("Misi saya");
+            _missionMenu.Click += delegate { ShowMissions(); };
+            menu.Items.Add(_missionMenu);
             _overlayItem = new ToolStripMenuItem("Penghitung di layar", null,
                 delegate { ToggleOverlay(); });
             _overlayItem.CheckOnClick = false;
@@ -738,6 +745,18 @@ namespace ScreenTimeGuard
             SyncOverlay(StatusReader.Read());
         }
 
+        void ShowMissions()
+        {
+            if (_missionForm == null || _missionForm.IsDisposed)
+            {
+                _missionForm = new MissionForm();
+                _missionForm.FormClosed += delegate { _missionForm = null; };
+                _missionForm.Show();
+            }
+            _missionForm.WindowState = FormWindowState.Normal;
+            _missionForm.Activate();
+        }
+
         void ShowParent()
         {
             if (_parentForm != null && !_parentForm.IsDisposed)
@@ -825,6 +844,7 @@ namespace ScreenTimeGuard
 
             int[] thresholds = ParseWarn(s.WarnMinutes);
             HandleSessionLimit(s, thresholds);
+            HandleMissions(s);
             string shortest = null;
             int shortestLeft = int.MaxValue;
 
@@ -926,6 +946,42 @@ namespace ScreenTimeGuard
                     + " untuk semua kegiatan. Setelah habis layar akan dikunci.", Theme.Warn, 9);
                 break;
             }
+        }
+
+        /// <summary>Lencana jumlah misi dan kabar saat orang tua selesai menilai.</summary>
+        void HandleMissions(Status s)
+        {
+            int ready = 0;
+            if (s.Missions != null)
+            {
+                for (int i = 0; i < s.Missions.Count; i++)
+                {
+                    StatusMission m = s.Missions[i];
+                    if (m.Status == "available" || m.Status == "rejected") ready++;
+
+                    string before;
+                    bool known = _missionStatus.TryGetValue(m.Id, out before);
+                    _missionStatus[m.Id] = m.Status;
+
+                    // Saat pertama kali dijalankan jangan membanjiri anak dengan
+                    // pemberitahuan untuk misi yang sudah lama dinilai.
+                    if (!_missionsSeeded || !known || before == m.Status) continue;
+
+                    if (m.Status == "approved")
+                        Toast.Show("Misi lulus: " + m.Title,
+                            "Hadiah " + m.RewardText + " sudah ditambahkan."
+                            + (m.ParentNote.Length > 0 ? " • " + m.ParentNote : ""),
+                            Theme.Good, 10);
+                    else if (m.Status == "rejected")
+                        Toast.Show("Misi belum lulus: " + m.Title,
+                            (m.ParentNote.Length > 0 ? m.ParentNote : "Coba lagi ya.")
+                            + " Kamu masih boleh mengumpulkan lagi hari ini.", Theme.Warn, 10);
+                }
+            }
+            _missionsSeeded = true;
+
+            if (_missionMenu != null)
+                _missionMenu.Text = ready > 0 ? "Misi saya (" + ready + " siap)" : "Misi saya";
         }
 
         static string Trunc(string s)

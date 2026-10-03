@@ -31,6 +31,10 @@ foreach ($t in @($taskAgent, $taskUi)) {
     }
 }
 
+$ruleName = 'ScreenTimeGuard Panel Orang Tua'
+Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue |
+    Remove-NetFirewallRule -ErrorAction SilentlyContinue
+
 Write-Host "Menghentikan proses yang masih berjalan"
 Get-Process -Name 'ScreenTimeGuard' -ErrorAction SilentlyContinue |
     Stop-Process -Force -ErrorAction SilentlyContinue

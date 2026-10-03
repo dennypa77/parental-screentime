@@ -29,6 +29,9 @@ ada di setiap Windows 10/11.
   [Batas pemakaian komputer](#batas-pemakaian-komputer-semua-kegiatan).
 - **Batas total per kelompok aplikasi** — pagu gabungan untuk aplikasi yang diawasi saja.
 - **Jam tidur** — blokir semua aplikasi yang diawasi pada rentang jam tertentu (mis. 21:00–06:00).
+- **Misi berhadiah waktu layar** — anak harus menyelesaikan tugas (mengaji, PR, beres-beres)
+  dan orang tua menyatakan lulus sebelum waktunya bertambah.
+- **Panel jarak jauh** — atur semuanya dari komputer atau HP sendiri di jaringan rumah.
 - **Jeda pengawasan** — matikan sementara semua aturan (mis. 30 menit) untuk acara keluarga.
 - **Riwayat harian** — `history.csv` mencatat pemakaian tiap hari, bisa dibuka di Excel.
 - **Catatan keamanan** — setiap penutupan aplikasi, perubahan aturan, dan percobaan password
@@ -145,6 +148,69 @@ tombol **+15 / +30 menit komputer** di tab *Hari ini*, atau **Jeda pengawasan**.
 > Catatan: jam komputer tetap berjalan walaupun ikon tray dimatikan. Kalau laporan
 > aktivitas dari tray hilang, agent menganggap anak sedang aktif — sengaja begitu, supaya
 > mematikan tray tidak menjadi celah.
+
+### Misi: belajar dulu, baru dapat waktu layar
+
+Orang tua menetapkan tugas; kalau dinyatakan lulus, anak langsung mendapat tambahan
+waktu layar. Ini cara paling rapi untuk membuat aturan "belajar dulu baru main":
+**setel jatah harian ke 0 menit**, lalu biarkan misi yang membukanya.
+
+Alurnya:
+
+1. Orang tua membuat misi, misalnya *"Mengaji halaman 12-13"*, hadiah 30 menit.
+2. Anak melihatnya di **ikon tray -> Misi saya**, mengerjakannya, lalu menekan
+   **"Saya sudah selesai"**. Kalau misinya diatur begitu, anak harus menulis keterangan
+   singkat tentang apa yang dikerjakan.
+3. Orang tua menerima misi yang menunggu penilaian, lalu menekan **Lulus** atau
+   **Belum lulus** (boleh disertai pesan).
+4. Begitu dinyatakan lulus, hadiah waktunya langsung masuk. Anak mendapat pemberitahuan.
+
+| Pengaturan misi | Arti |
+|---|---|
+| Hadiah | berapa menit yang didapat kalau lulus |
+| Hadiah masuk ke | jatah komputer menyeluruh, total aplikasi, atau satu aplikasi tertentu |
+| Pengulangan | setiap hari, seminggu sekali, atau sekali saja |
+| Wajib menulis keterangan | anak harus menuliskan apa yang dikerjakan saat mengumpulkan |
+
+Yang perlu diketahui:
+
+- Anak **tidak bisa meluluskan dirinya sendiri**. Mengumpulkan misi tidak butuh password,
+  tetapi menilainya butuh password orang tua.
+- **Belum lulus bukan akhir.** Anak boleh mengumpulkan lagi di hari yang sama.
+- Misi harian muncul kembali setiap hari pada jam reset; misi mingguan tujuh hari setelah
+  lulus; misi sekali saja tidak muncul lagi setelah lulus.
+- Semua pengumpulan dan penilaian tercatat di `log.txt`.
+
+### Panel jarak jauh: mengatur dari komputer atau HP sendiri
+
+Supaya tidak perlu mendatangi komputer anak setiap kali, panel bisa dibuka dari perangkat
+lain di jaringan rumah yang sama.
+
+1. Di komputer anak: Panel orang tua -> **Aturan umum** -> *Panel jarak jauh* -> centang
+   **Nyalakan panel jarak jauh** -> **Simpan**.
+2. Alamatnya muncul di bagian itu, misalnya `http://192.168.1.5:8777/`.
+3. Dari laptop atau HP, buka alamat tersebut di peramban dan masuk dengan password yang sama.
+
+Dari sana Anda bisa menilai misi, memberi bonus waktu, menjeda pengawasan, mengubah jatah
+aplikasi, dan mengatur batas pemakaian komputer serta jam tidur. Menambahkan aplikasi baru
+tetap dilakukan di komputer anak, karena di sanalah daftar aplikasi yang sedang berjalan bisa dipilih.
+
+**Bagaimana keamanannya dijaga:**
+
+- **Password tidak pernah dikirim lewat jaringan.** Peramban menghitung PBKDF2-SHA256
+  (120.000 putaran) atas password Anda, lalu menjawab angka acak dari server dengan HMAC.
+  Penyadap di jaringan tidak mendapat password Anda, dan jawaban itu tidak bisa dipakai ulang.
+- Hanya bisa dibuka dari **jaringan lokal** (10.x, 192.168.x, 172.16-31.x) selama pilihan
+  *"Hanya boleh dibuka dari jaringan rumah"* tetap aktif.
+- Izin Windows Firewall yang dibuat installer hanya berlaku untuk jaringan **Private/Domain**,
+  tidak untuk jaringan publik.
+- Salah password 5 kali mengunci alamat itu selama 60 detik. Sesi masuk berlaku 6 jam dan
+  terikat ke alamat IP perangkat Anda.
+
+**Batasnya, supaya jelas:** sambungannya memakai `http`, bukan `https`. Artinya isi halaman
+dan kuki sesi lewat dalam keadaan terbuka di jaringan lokal. Untuk jaringan rumah ini
+umumnya memadai, tetapi **jangan nyalakan panel ini di WiFi umum**, dan jangan
+meneruskan portnya dari internet (port forwarding).
 
 ### Arti angka jatah
 
@@ -273,6 +339,7 @@ acak. Salah password 5 kali mengunci panel selama 60 detik.
 | `settings.json` | aturan + hash password |
 | `usage.json` | pemakaian hari ini |
 | `status.json` | sisa waktu terkini (dibaca UI) |
+| `missions.json` | riwayat pengerjaan dan penilaian misi |
 | `history.csv` | rekap harian |
 | `log.txt` | catatan kejadian |
 | `update\` | berkas pembaruan yang sudah diverifikasi |

@@ -44,6 +44,83 @@ namespace ScreenTimeGuard
         }
     }
 
+    /// <summary>
+    /// Tugas yang ditetapkan orang tua. Kalau orang tua menyatakan lulus,
+    /// anak mendapat tambahan waktu layar.
+    /// </summary>
+    [DataContract]
+    public class Mission
+    {
+        [DataMember(Order = 1)] public string Id;
+        [DataMember(Order = 2)] public string Title;
+        [DataMember(Order = 3)] public string Detail;
+        [DataMember(Order = 4)] public int RewardMinutes;
+        [DataMember(Order = 5)] public string RewardTarget;   // "SESSION" | "TOTAL" | nama proses
+        [DataMember(Order = 6)] public string Repeat;         // "daily" | "weekly" | "once"
+        [DataMember(Order = 7)] public bool Active;
+        [DataMember(Order = 8)] public bool NeedsNote;        // anak wajib menulis keterangan
+
+        public Mission() { SetDefaults(); }
+
+        [OnDeserializing]
+        void OnDeserializing(StreamingContext context) { SetDefaults(); }
+
+        void SetDefaults()
+        {
+            Id = "";
+            Title = "";
+            Detail = "";
+            RewardMinutes = 30;
+            RewardTarget = "SESSION";
+            Repeat = "daily";
+            Active = true;
+            NeedsNote = false;
+        }
+    }
+
+    /// <summary>Satu kesempatan pengerjaan misi (satu hari untuk misi harian).</summary>
+    [DataContract]
+    public class MissionRun
+    {
+        [DataMember(Order = 1)] public string MissionId;
+        [DataMember(Order = 2)] public string Day;
+        [DataMember(Order = 3)] public string Status;       // available | submitted | approved | rejected
+        [DataMember(Order = 4)] public string SubmittedUtc;
+        [DataMember(Order = 5)] public string DecidedUtc;
+        [DataMember(Order = 6)] public string ChildNote;
+        [DataMember(Order = 7)] public string ParentNote;
+        [DataMember(Order = 8)] public int AwardedMinutes;
+
+        public MissionRun() { SetDefaults(); }
+
+        [OnDeserializing]
+        void OnDeserializing(StreamingContext context) { SetDefaults(); }
+
+        void SetDefaults()
+        {
+            MissionId = "";
+            Day = "";
+            Status = "available";
+            SubmittedUtc = "";
+            DecidedUtc = "";
+            ChildNote = "";
+            ParentNote = "";
+        }
+    }
+
+    [DataContract]
+    public class MissionBook
+    {
+        [DataMember(Order = 1)] public List<MissionRun> Runs;
+
+        public MissionBook() { SetDefaults(); }
+
+        [OnDeserializing]
+        void OnDeserializing(StreamingContext context) { SetDefaults(); }
+
+        void SetDefaults() { Runs = new List<MissionRun>(); }
+    }
+
     [DataContract]
     public class Settings
     {
@@ -73,7 +150,13 @@ namespace ScreenTimeGuard
         [DataMember(Order = 21)] public string SessionAction;         // "lock" | "logoff"
         [DataMember(Order = 22)] public int SessionRelockGraceSeconds;
 
+        // Panel jarak jauh: orang tua membuka panel dari komputer / HP sendiri.
+        [DataMember(Order = 23)] public bool RemoteEnabled;
+        [DataMember(Order = 24)] public int RemotePort;
+        [DataMember(Order = 25)] public bool RemoteLanOnly;    // tolak permintaan dari luar jaringan lokal
+
         [DataMember(Order = 50)] public List<AppLimit> Apps;
+        [DataMember(Order = 51)] public List<Mission> Missions;
 
         public Settings() { SetDefaults(); }
 
@@ -108,8 +191,12 @@ namespace ScreenTimeGuard
             SessionWeekendMinutes = 120;
             SessionIdleMinutes = 5;
             SessionAction = "lock";
+            RemoteEnabled = false;
+            RemotePort = 8777;
+            RemoteLanOnly = true;
             SessionRelockGraceSeconds = 60;
             Apps = new List<AppLimit>();
+            Missions = new List<Mission>();
         }
 
         public int[] ParsedWarnMinutes()
@@ -208,6 +295,30 @@ namespace ScreenTimeGuard
         public StatusApp() { Name = ""; Process = ""; BlockReason = ""; GraceLeftSeconds = -1; }
     }
 
+    /// <summary>Tampilan misi untuk anak (dan untuk panel orang tua).</summary>
+    [DataContract]
+    public class StatusMission
+    {
+        [DataMember(Order = 1)] public string Id;
+        [DataMember(Order = 2)] public string Title;
+        [DataMember(Order = 3)] public string Detail;
+        [DataMember(Order = 4)] public int RewardMinutes;
+        [DataMember(Order = 5)] public string RewardText;
+        [DataMember(Order = 6)] public string Status;
+        [DataMember(Order = 7)] public string StatusText;
+        [DataMember(Order = 8)] public bool CanSubmit;
+        [DataMember(Order = 9)] public bool NeedsNote;
+        [DataMember(Order = 10)] public string ChildNote;
+        [DataMember(Order = 11)] public string ParentNote;
+        [DataMember(Order = 12)] public string Repeat;
+
+        public StatusMission()
+        {
+            Id = ""; Title = ""; Detail = ""; RewardText = "";
+            Status = ""; StatusText = ""; ChildNote = ""; ParentNote = ""; Repeat = "";
+        }
+    }
+
     [DataContract]
     public class Status
     {
@@ -235,7 +346,12 @@ namespace ScreenTimeGuard
         [DataMember(Order = 22)] public int SessionBonusMinutes;
         [DataMember(Order = 23)] public bool SessionLockRequested;
         [DataMember(Order = 24)] public string SessionActionText;
+        [DataMember(Order = 25)] public int MissionsPending;      // menunggu penilaian orang tua
+        [DataMember(Order = 26)] public int MissionsAvailable;    // siap dikerjakan anak
+        [DataMember(Order = 27)] public string RemoteUrl;         // "" kalau panel jarak jauh mati
+
         [DataMember(Order = 50)] public List<StatusApp> Apps;
+        [DataMember(Order = 51)] public List<StatusMission> Missions;
 
         public Status()
         {
@@ -247,7 +363,9 @@ namespace ScreenTimeGuard
             AgentVersion = "";
             UpdateAvailableVersion = "";
             SessionActionText = "";
+            RemoteUrl = "";
             Apps = new List<StatusApp>();
+            Missions = new List<StatusMission>();
         }
     }
 
@@ -359,6 +477,7 @@ namespace ScreenTimeGuard
         public static string Usage { get { return Path.Combine(Dir, "usage.json"); } }
         public static string StatusFile { get { return Path.Combine(Dir, "status.json"); } }
         public static string History { get { return Path.Combine(Dir, "history.csv"); } }
+        public static string Missions { get { return Path.Combine(Dir, "missions.json"); } }
         public static string LogFile { get { return Path.Combine(Dir, "log.txt"); } }
 
         public static string PipeName { get { return _pipeName; } }
